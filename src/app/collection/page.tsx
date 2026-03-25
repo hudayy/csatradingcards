@@ -28,6 +28,7 @@ const RARITIES = ['all', 'bronze', 'silver', 'gold', 'platinum', 'diamond', 'hol
 
 export default function CollectionPage() {
   const [cards, setCards] = useState<CardData[]>([]);
+  const [allCards, setAllCards] = useState<CardData[]>([]);
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedRarity, setSelectedRarity] = useState('all');
@@ -38,10 +39,15 @@ export default function CollectionPage() {
   const fetchCards = async (rarity?: string) => {
     const params = new URLSearchParams();
     if (rarity && rarity !== 'all') params.set('rarity', rarity);
-    
     const res = await fetch(`/api/collection?${params.toString()}`);
     const data = await res.json();
     if (data.cards) setCards(data.cards);
+  };
+
+  const fetchAllCards = async () => {
+    const res = await fetch('/api/collection');
+    const data = await res.json();
+    if (data.cards) setAllCards(data.cards);
   };
 
   useEffect(() => {
@@ -50,7 +56,7 @@ export default function CollectionPage() {
       .then(data => {
         if (data.user) {
           setIsLoggedIn(true);
-          fetchCards().then(() => setLoading(false));
+          Promise.all([fetchCards(), fetchAllCards()]).then(() => setLoading(false));
         } else {
           setLoading(false);
         }
@@ -81,6 +87,7 @@ export default function CollectionPage() {
         setSelectedCard(null);
         setListPrice('');
         fetchCards(selectedRarity);
+        fetchAllCards();
         setTimeout(() => setListingStatus(null), 2000);
       } else {
         setListingStatus(data.error || 'Failed to list');
@@ -113,9 +120,9 @@ export default function CollectionPage() {
     );
   }
 
-  // Compute stats
+  // Compute stats from unfiltered allCards so counts never change on filter
   const rarityCount: Record<string, number> = {};
-  cards.forEach(c => {
+  allCards.forEach(c => {
     rarityCount[c.rarity] = (rarityCount[c.rarity] || 0) + 1;
   });
 
@@ -123,7 +130,7 @@ export default function CollectionPage() {
     <div className="container">
       <div className="page-header">
         <h1 className="page-title">My Collection</h1>
-        <p className="page-subtitle">{cards.length} card{cards.length !== 1 ? 's' : ''} collected</p>
+        <p className="page-subtitle">{allCards.length} card{allCards.length !== 1 ? 's' : ''} collected</p>
       </div>
 
       {/* Rarity filter stats */}
@@ -143,7 +150,7 @@ export default function CollectionPage() {
           >
             <div className="stat-label">{r === 'all' ? 'All' : r.charAt(0).toUpperCase() + r.slice(1)}</div>
             <div className="stat-value" style={{ fontSize: '1.25rem' }}>
-              {r === 'all' ? cards.length : (rarityCount[r] || 0)}
+              {r === 'all' ? allCards.length : (rarityCount[r] || 0)}
             </div>
           </div>
         ))}

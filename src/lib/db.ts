@@ -287,6 +287,17 @@ export function insertCard(card: Omit<Card, 'created_at'>): void {
   );
 }
 
+export function syncFranchiseDataOnCards(franchiseId: number, color: string | null, logoUrl: string | null, conf: string | null): void {
+  if (!color && !logoUrl && !conf) return;
+  getDb().prepare(`
+    UPDATE cards SET
+      franchise_color     = CASE WHEN ? IS NOT NULL THEN ? ELSE franchise_color END,
+      franchise_logo_url  = CASE WHEN ? IS NOT NULL THEN ? ELSE franchise_logo_url END,
+      franchise_conf      = CASE WHEN ? IS NOT NULL THEN ? ELSE franchise_conf END
+    WHERE franchise_id = ?
+  `).run(color, color, logoUrl, logoUrl, conf, conf, franchiseId);
+}
+
 export function addCardToUser(userId: number, cardId: string, source: string = 'pack'): number {
   const result = getDb().prepare(`
     INSERT INTO user_cards (user_id, card_id, source) VALUES (?, ?, ?)
@@ -522,9 +533,174 @@ export function getCollectionLeaderboard(limit = 50): (User & { card_count: numb
 // ---- Search users ----
 
 export function searchUsers(query: string, limit = 20): User[] {
+  const numeric = parseInt(query);
+  if (!isNaN(numeric)) {
+    return getDb().prepare(`SELECT * FROM users WHERE csa_id = ? LIMIT ?`).all(numeric, limit) as User[];
+  }
+  return getDb().prepare(`SELECT * FROM users WHERE (csa_name LIKE ? OR discord_username LIKE ?) LIMIT ?`).all(`%${query}%`, `%${query}%`, limit) as User[];
+}
+
+// ---- Trade interfaces ----
+
+export interface Trade {
+  id: number;
+  sender_id: number;
+  receiver_id: number;
+  status: string;
+  created_at: string;
+  resolved_at: string | null;
+}
+
+export interface TradeWithDetails extends Trade {
+  sender_name: string;
+  sender_avatar: string | null;
+  receiver_name: string;
+  receiver_avatar: string | null;
+  sender_cards: UserCardWithDetails[];
+  receiver_cards: UserCardWithDetails[];
+}
+
+// ---- Trade operations ----
+
+export function hasUserCard(userId: number, cardId: string): boolean {
+  const row = getDb().prepare('SELECT id FROM user_cards WHERE user_id = ? AND card_id = ? LIMIT 1').get(userId, cardId);
+  return row != null;
+}
+
+export function getUserPublicCards(userId: number): UserCardWithDetails[] {
   return getDb().prepare(`
-    SELECT * FROM users 
-    WHERE (csa_name LIKE ? OR discord_username LIKE ?) AND csa_id IS NOT NULL
-    LIMIT ?
-  `).all(`%${query}%`, `%${query}%`, limit) as User[];
+    SELECT uc.id, uc.user_id, uc.card_id, uc.acquired_at, uc.source, uc.is_listed,
+      c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
+      c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
+      c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
+      c.rarity, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
+    FROM user_cards uc
+    JOIN cards c ON uc.card_id = c.id
+    WHERE uc.user_id = ? AND uc.is_listed = 0
+    ORDER BY c.overall_rating DESC
+  `).all(userId) as UserCardWithDetails[];
+}
+
+function getTradeCards(tradeId: number, side: 'sender' | 'receiver'): UserCardWithDetails[] {
+  return getDb().prepare(`
+    SELECT uc.id, uc.user_id, uc.card_id, uc.acquired_at, uc.source, uc.is_listed,
+      c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
+      c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
+      c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
+      c.rarity, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
+    FROM trade_cards tc
+    JOIN user_cards uc ON tc.user_card_id = uc.id
+    JOIN cards c ON uc.card_id = c.id
+    WHERE tc.trade_id = ? AND tc.side = ?
+  `).all(tradeId, side) as UserCardWithDetails[];
+}
+
+export function getTradesForUser(userId: number): TradeWithDetails[] {
+  const trades = getDb().prepare(`
+    SELECT t.*,
+      su.discord_username as sender_name, su.avatar_url as sender_avatar,
+      ru.discord_username as receiver_name, ru.avatar_url as receiver_avatar
+    FROM trades t
+    JOIN users su ON t.sender_id = su.id
+    JOIN users ru ON t.receiver_id = ru.id
+    WHERE (t.sender_id = ? OR t.receiver_id = ?) AND t.status = 'pending'
+    ORDER BY t.created_at DESC
+  `).all(userId, userId) as (Trade & { sender_name: string; sender_avatar: string | null; receiver_name: string; receiver_avatar: string | null })[];
+
+  return trades.map(trade => ({
+    ...trade,
+    sender_cards: getTradeCards(trade.id, 'sender'),
+    receiver_cards: getTradeCards(trade.id, 'receiver'),
+  }));
+}
+
+export function createTrade(senderId: number, receiverId: number, senderCardId: number, receiverCardId: number): number {
+  const database = getDb();
+
+  const senderCard = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(senderCardId, senderId);
+  if (!senderCard) throw new Error('Sender card not found or is listed');
+
+  const receiverCard = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(receiverCardId, receiverId);
+  if (!receiverCard) throw new Error('Receiver card not found or is listed');
+
+  let tradeId: number;
+  database.transaction(() => {
+    const result = database.prepare(`
+      INSERT INTO trades (sender_id, receiver_id, status) VALUES (?, ?, 'pending')
+    `).run(senderId, receiverId);
+    tradeId = result.lastInsertRowid as number;
+
+    database.prepare(`INSERT INTO trade_cards (trade_id, user_card_id, side) VALUES (?, ?, 'sender')`).run(tradeId, senderCardId);
+    database.prepare(`INSERT INTO trade_cards (trade_id, user_card_id, side) VALUES (?, ?, 'receiver')`).run(tradeId, receiverCardId);
+  })();
+
+  return tradeId!;
+}
+
+export function acceptTrade(tradeId: number, userId: number): { success: boolean; error?: string } {
+  const database = getDb();
+
+  try {
+    database.transaction(() => {
+      const trade = database.prepare(`SELECT * FROM trades WHERE id = ? AND receiver_id = ? AND status = 'pending'`).get(tradeId, userId) as Trade | undefined;
+      if (!trade) throw new Error('Trade not found or you are not the receiver');
+
+      const senderCards = getTradeCards(tradeId, 'sender');
+      const receiverCards = getTradeCards(tradeId, 'receiver');
+
+      for (const card of senderCards) {
+        const current = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(card.id, trade.sender_id);
+        if (!current) throw new Error('Sender no longer owns one of the trade cards');
+      }
+      for (const card of receiverCards) {
+        const current = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(card.id, trade.receiver_id);
+        if (!current) throw new Error('Receiver no longer owns one of the trade cards');
+      }
+
+      for (const card of senderCards) {
+        database.prepare(`UPDATE user_cards SET user_id = ?, source = 'trade', acquired_at = CURRENT_TIMESTAMP WHERE id = ?`).run(trade.receiver_id, card.id);
+      }
+      for (const card of receiverCards) {
+        database.prepare(`UPDATE user_cards SET user_id = ?, source = 'trade', acquired_at = CURRENT_TIMESTAMP WHERE id = ?`).run(trade.sender_id, card.id);
+      }
+
+      database.prepare(`UPDATE trades SET status = 'accepted', resolved_at = CURRENT_TIMESTAMP WHERE id = ?`).run(tradeId);
+
+      // Cancel other pending trades involving the same user_card ids
+      const allCardIds = [...senderCards, ...receiverCards].map(c => c.id);
+      if (allCardIds.length > 0) {
+        const placeholders = allCardIds.map(() => '?').join(',');
+        const affectedTradeIds = database.prepare(`
+          SELECT DISTINCT trade_id FROM trade_cards WHERE user_card_id IN (${placeholders}) AND trade_id != ?
+        `).all(...allCardIds, tradeId) as { trade_id: number }[];
+
+        for (const { trade_id } of affectedTradeIds) {
+          const t = database.prepare(`SELECT * FROM trades WHERE id = ? AND status = 'pending'`).get(trade_id);
+          if (t) {
+            database.prepare(`UPDATE trades SET status = 'cancelled', resolved_at = CURRENT_TIMESTAMP WHERE id = ?`).run(trade_id);
+          }
+        }
+      }
+    })();
+
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
+export function declineTrade(tradeId: number, userId: number): boolean {
+  const database = getDb();
+  const trade = database.prepare(`SELECT * FROM trades WHERE id = ? AND receiver_id = ? AND status = 'pending'`).get(tradeId, userId);
+  if (!trade) return false;
+  database.prepare(`UPDATE trades SET status = 'declined', resolved_at = CURRENT_TIMESTAMP WHERE id = ?`).run(tradeId);
+  return true;
+}
+
+export function cancelTrade(tradeId: number, userId: number): boolean {
+  const database = getDb();
+  const trade = database.prepare(`SELECT * FROM trades WHERE id = ? AND sender_id = ? AND status = 'pending'`).get(tradeId, userId);
+  if (!trade) return false;
+  database.prepare(`UPDATE trades SET status = 'cancelled', resolved_at = CURRENT_TIMESTAMP WHERE id = ?`).run(tradeId);
+  return true;
 }

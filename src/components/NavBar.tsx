@@ -36,7 +36,9 @@ export default function NavBar() {
     { href: '/', label: 'Home' },
     { href: '/packs', label: 'Open Packs' },
     { href: '/collection', label: 'Collection' },
+    { href: '/collection/binders', label: 'Binders' },
     { href: '/marketplace', label: 'Marketplace' },
+    { href: '/trades', label: 'Trades' },
   ];
 
   return (

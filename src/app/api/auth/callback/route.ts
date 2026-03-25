@@ -58,6 +58,22 @@ export async function GET(req: NextRequest) {
       csaMember?.csa_name
     );
 
+    // Grant starter bronze card for CSA players
+    if (csaMember?.csa_id) {
+      try {
+        const { getPlayerPool, generateCard } = await import('@/lib/cards');
+        const { hasUserCard, addCardToUser } = await import('@/lib/db');
+        const pool = await getPlayerPool();
+        const entry = pool.find(e => e.player.Player.csa_id === csaMember!.csa_id);
+        if (entry) {
+          const card = await generateCard(entry, 'bronze');
+          if (!hasUserCard(user.id, card.id)) {
+            addCardToUser(user.id, card.id, 'reward');
+          }
+        }
+      } catch { /* don't block login */ }
+    }
+
     // Create session
     const token = createSessionToken({
       discord_id: discordUser.id,

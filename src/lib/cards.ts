@@ -1,6 +1,6 @@
 import { v5 as uuidv5 } from 'uuid';
 import { getLeaguePlayers, getPlayerCoreAvgs, getMemberById, getFranchises, getFranchiseDetails, getCurrentSeason, type CSALeaguePlayer, type CSAPlayerCoreAvgs, type CSAFranchise } from './csa-api';
-import { insertCard, type Card } from './db';
+import { insertCard, syncFranchiseDataOnCards, type Card } from './db';
 
 const CARD_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
 
@@ -113,6 +113,15 @@ export async function getPlayerPool(): Promise<PlayerPool[]> {
 
   const franchiseMap = new Map(franchises.map(f => [f.id, f]));
   const franchiseConfMap = new Map(franchiseDetails.map(fd => [fd.Franchise.id, fd.conf]));
+
+  // Back-fill any existing cards that have null franchise color/logo/conf
+  for (const [franchiseId, franchise] of franchiseMap.entries()) {
+    const logoUrl = franchise.logo
+      ? (franchise.logo.startsWith('http') ? franchise.logo : `https://api.playcsa.com${franchise.logo}`)
+      : null;
+    const conf = franchiseConfMap.get(franchiseId) ?? null;
+    syncFranchiseDataOnCards(franchiseId, franchise.color, logoUrl, conf);
+  }
 
   const avgsByPlayer = new Map<number, CSAPlayerCoreAvgs>();
   for (const avg of allAvgs) {

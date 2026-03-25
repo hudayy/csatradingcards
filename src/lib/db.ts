@@ -620,24 +620,30 @@ export function getTradesForUser(userId: number): TradeWithDetails[] {
   }));
 }
 
-export function createTrade(senderId: number, receiverId: number, senderCardId: number, receiverCardId: number): number {
+export function createTrade(senderId: number, receiverId: number, senderCardIds: number[], receiverCardIds: number[]): number {
   const database = getDb();
 
-  const senderCard = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(senderCardId, senderId);
-  if (!senderCard) throw new Error('Sender card not found or is listed');
+  if (!senderCardIds.length || !receiverCardIds.length) throw new Error('Must offer and request at least one card');
 
-  const receiverCard = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(receiverCardId, receiverId);
-  if (!receiverCard) throw new Error('Receiver card not found or is listed');
+  for (const id of senderCardIds) {
+    const card = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(id, senderId);
+    if (!card) throw new Error('Sender card not found or is listed');
+  }
+  for (const id of receiverCardIds) {
+    const card = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(id, receiverId);
+    if (!card) throw new Error('Receiver card not found or is listed');
+  }
 
   let tradeId: number;
   database.transaction(() => {
-    const result = database.prepare(`
-      INSERT INTO trades (sender_id, receiver_id, status) VALUES (?, ?, 'pending')
-    `).run(senderId, receiverId);
+    const result = database.prepare(`INSERT INTO trades (sender_id, receiver_id, status) VALUES (?, ?, 'pending')`).run(senderId, receiverId);
     tradeId = result.lastInsertRowid as number;
-
-    database.prepare(`INSERT INTO trade_cards (trade_id, user_card_id, side) VALUES (?, ?, 'sender')`).run(tradeId, senderCardId);
-    database.prepare(`INSERT INTO trade_cards (trade_id, user_card_id, side) VALUES (?, ?, 'receiver')`).run(tradeId, receiverCardId);
+    for (const id of senderCardIds) {
+      database.prepare(`INSERT INTO trade_cards (trade_id, user_card_id, side) VALUES (?, ?, 'sender')`).run(tradeId, id);
+    }
+    for (const id of receiverCardIds) {
+      database.prepare(`INSERT INTO trade_cards (trade_id, user_card_id, side) VALUES (?, ?, 'receiver')`).run(tradeId, id);
+    }
   })();
 
   return tradeId!;
@@ -655,25 +661,25 @@ export function acceptTrade(tradeId: number, userId: number): { success: boolean
       const receiverCards = getTradeCards(tradeId, 'receiver');
 
       for (const card of senderCards) {
-        const current = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(card.id, trade.sender_id);
+        const current = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(card.user_card_id, trade.sender_id);
         if (!current) throw new Error('Sender no longer owns one of the trade cards');
       }
       for (const card of receiverCards) {
-        const current = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(card.id, trade.receiver_id);
+        const current = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(card.user_card_id, trade.receiver_id);
         if (!current) throw new Error('Receiver no longer owns one of the trade cards');
       }
 
       for (const card of senderCards) {
-        database.prepare(`UPDATE user_cards SET user_id = ?, source = 'trade', acquired_at = CURRENT_TIMESTAMP WHERE id = ?`).run(trade.receiver_id, card.id);
+        database.prepare(`UPDATE user_cards SET user_id = ?, source = 'trade', acquired_at = CURRENT_TIMESTAMP WHERE id = ?`).run(trade.receiver_id, card.user_card_id);
       }
       for (const card of receiverCards) {
-        database.prepare(`UPDATE user_cards SET user_id = ?, source = 'trade', acquired_at = CURRENT_TIMESTAMP WHERE id = ?`).run(trade.sender_id, card.id);
+        database.prepare(`UPDATE user_cards SET user_id = ?, source = 'trade', acquired_at = CURRENT_TIMESTAMP WHERE id = ?`).run(trade.sender_id, card.user_card_id);
       }
 
       database.prepare(`UPDATE trades SET status = 'accepted', resolved_at = CURRENT_TIMESTAMP WHERE id = ?`).run(tradeId);
 
       // Cancel other pending trades involving the same user_card ids
-      const allCardIds = [...senderCards, ...receiverCards].map(c => c.id);
+      const allCardIds = [...senderCards, ...receiverCards].map(c => c.user_card_id);
       if (allCardIds.length > 0) {
         const placeholders = allCardIds.map(() => '?').join(',');
         const affectedTradeIds = database.prepare(`

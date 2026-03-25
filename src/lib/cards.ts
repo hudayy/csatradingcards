@@ -231,23 +231,37 @@ export async function generatePackCards(count: number = 5): Promise<Omit<Card, '
   const pool = await getPlayerPool();
   if (pool.length === 0) throw new Error('No players available for card generation');
 
+  const wcPool = pool.filter(e => e.player.tier?.toLowerCase().replace(/[\s_]+/g, '') === 'worldclass');
+  const normalPool = pool.filter(e => e.player.tier?.toLowerCase().replace(/[\s_]+/g, '') !== 'worldclass');
+  // Fallback: if no normal players, use full pool without WC forcing
+  const pickablePool = normalPool.length > 0 ? normalPool : pool;
+
   const cards: Omit<Card, 'created_at'>[] = [];
   const usedPlayers = new Set<number>();
 
-  for (let i = 0; i < count; i++) {
-    // Pick a random player (avoid duplicates in same pack)
-    let attempts = 0;
+  function pickFrom(src: PlayerPool[]): PlayerPool {
     let entry: PlayerPool;
+    let attempts = 0;
     do {
-      entry = pool[Math.floor(Math.random() * pool.length)];
+      entry = src[Math.floor(Math.random() * src.length)];
       attempts++;
     } while (usedPlayers.has(entry.player.Player.csa_id) && attempts < 50);
+    return entry;
+  }
+
+  for (let i = 0; i < count; i++) {
+    const rarity = rollRarity();
+
+    let entry: PlayerPool;
+    if (rarity === 'prismatic' && wcPool.length > 0) {
+      // Prismatic slot: prefer World Class players
+      entry = pickFrom(wcPool);
+    } else {
+      // Non-prismatic slot: only pick from non-World Class players
+      entry = pickFrom(pickablePool);
+    }
 
     usedPlayers.add(entry.player.Player.csa_id);
-
-    // World Class players can only appear as prismatic
-    const isWorldClass = entry.player.tier?.toLowerCase().replace(/[\s_]+/g, '') === 'worldclass';
-    const rarity: Rarity = isWorldClass ? 'prismatic' : rollRarity();
 
     const card = await generateCard(entry, rarity);
     cards.push(card);

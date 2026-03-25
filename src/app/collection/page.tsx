@@ -126,26 +126,26 @@ export default function CollectionPage() {
         <p className="page-subtitle">{cards.length} card{cards.length !== 1 ? 's' : ''} collected</p>
       </div>
 
-      {/* Rarity stats */}
-      <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
-        {RARITIES.slice(1).map(r => (
-          <div className="stat-card" key={r} style={{ textAlign: 'center', padding: '0.75rem' }}>
-            <div className="stat-label">{r}</div>
-            <div className="stat-value" style={{ fontSize: '1.25rem' }}>{rarityCount[r] || 0}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div className="filters">
+      {/* Rarity filter stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '0.5rem', marginBottom: '1.5rem' }}>
         {RARITIES.map(r => (
-          <button
+          <div
             key={r}
-            className={`filter-btn ${selectedRarity === r ? 'active' : ''}`}
+            className="stat-card"
             onClick={() => setSelectedRarity(r)}
+            style={{
+              textAlign: 'center',
+              padding: '0.75rem 0.25rem',
+              cursor: 'pointer',
+              outline: selectedRarity === r ? '2px solid var(--accent-blue)' : '2px solid transparent',
+              transition: 'outline 0.15s',
+            }}
           >
-            {r === 'all' ? 'All' : r.charAt(0).toUpperCase() + r.slice(1)}
-          </button>
+            <div className="stat-label">{r === 'all' ? 'All' : r.charAt(0).toUpperCase() + r.slice(1)}</div>
+            <div className="stat-value" style={{ fontSize: '1.25rem' }}>
+              {r === 'all' ? cards.length : (rarityCount[r] || 0)}
+            </div>
+          </div>
         ))}
       </div>
 

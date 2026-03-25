@@ -35,6 +35,7 @@ export default function CollectionPage() {
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
   const [listPrice, setListPrice] = useState('');
   const [listingStatus, setListingStatus] = useState<string | null>(null);
+  const [unlisting, setUnlisting] = useState(false);
 
   const fetchCards = async (rarity?: string) => {
     const params = new URLSearchParams();
@@ -95,6 +96,31 @@ export default function CollectionPage() {
     } catch {
       setListingStatus('Network error');
     }
+  };
+
+  const handleUnlistCard = async () => {
+    if (!selectedCard) return;
+    setUnlisting(true);
+    try {
+      const res = await fetch('/api/marketplace', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_card_id: selectedCard.user_card_id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setListingStatus('Unlisted successfully!');
+        setSelectedCard(null);
+        fetchCards(selectedRarity);
+        fetchAllCards();
+        setTimeout(() => setListingStatus(null), 2000);
+      } else {
+        setListingStatus(data.error || 'Failed to unlist');
+      }
+    } catch {
+      setListingStatus('Network error');
+    }
+    setUnlisting(false);
   };
 
   if (loading) {
@@ -233,8 +259,16 @@ export default function CollectionPage() {
             )}
 
             {selectedCard.is_listed === 1 && (
-              <div style={{ textAlign: 'center', color: 'var(--accent-gold)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
-                <Tag size={16} /> This card is currently listed on the marketplace
+              <div>
+                <div style={{ textAlign: 'center', color: 'var(--accent-gold)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginBottom: '1rem' }}>
+                  <Tag size={16} /> Listed on marketplace
+                </div>
+                <div className="modal-actions">
+                  <button className="btn btn-secondary" onClick={() => setSelectedCard(null)}>Close</button>
+                  <button className="btn btn-danger" onClick={handleUnlistCard} disabled={unlisting}>
+                    {unlisting ? 'Unlisting...' : 'Remove Listing'}
+                  </button>
+                </div>
               </div>
             )}
           </div>

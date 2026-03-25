@@ -479,6 +479,10 @@ export function buyListing(listingId: number, buyerId: number): { success: boole
   }
 }
 
+export function getActiveListingByUserCardId(userCardId: number): MarketplaceListing | undefined {
+  return getDb().prepare('SELECT * FROM marketplace_listings WHERE user_card_id = ? AND status = ?').get(userCardId, 'active') as MarketplaceListing | undefined;
+}
+
 export function cancelListing(listingId: number, sellerId: number): boolean {
   const database = getDb();
   const listing = database.prepare('SELECT * FROM marketplace_listings WHERE id = ? AND seller_id = ? AND status = ?').get(listingId, sellerId, 'active') as MarketplaceListing | undefined;

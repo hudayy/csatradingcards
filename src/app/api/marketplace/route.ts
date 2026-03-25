@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, getActiveListings, createListing, getUserCardById } from '@/lib/db';
+import { getUserByDiscordId, getActiveListings, createListing, getUserCardById, getActiveListingByUserCardId, cancelListing } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
   const url = req.nextUrl;
@@ -47,4 +47,35 @@ export async function POST(req: NextRequest) {
   const listingId = createListing(user.id, user_card_id, userCard.card_id, price);
 
   return NextResponse.json({ listing_id: listingId, success: true });
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+  }
+
+  const user = getUserByDiscordId(session.discord_id);
+  if (!user) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
+
+  const body = await req.json();
+  const { user_card_id } = body;
+
+  if (!user_card_id) {
+    return NextResponse.json({ error: 'Missing user_card_id' }, { status: 400 });
+  }
+
+  const listing = getActiveListingByUserCardId(user_card_id);
+  if (!listing || listing.seller_id !== user.id) {
+    return NextResponse.json({ error: 'Listing not found' }, { status: 404 });
+  }
+
+  const cancelled = cancelListing(listing.id, user.id);
+  if (!cancelled) {
+    return NextResponse.json({ error: 'Failed to cancel listing' }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
 }

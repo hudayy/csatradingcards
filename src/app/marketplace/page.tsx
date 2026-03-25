@@ -7,6 +7,7 @@ import { Search, Store, FolderOpen, LogIn, Coins } from 'lucide-react';
 interface ListingData {
   id: number;
   seller_id: number;
+  user_card_id: number;
   price: number;
   seller_name: string;
   seller_avatar: string | null;
@@ -36,8 +37,10 @@ export default function MarketplacePage() {
   const [selectedRarity, setSelectedRarity] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [buyingId, setBuyingId] = useState<number | null>(null);
+  const [unlistingId, setUnlistingId] = useState<number | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
 
   const fetchListings = async () => {
     const params = new URLSearchParams();
@@ -52,7 +55,7 @@ export default function MarketplacePage() {
 
   useEffect(() => {
     fetch('/api/auth/me').then(r => r.json()).then(d => {
-      if (d.user) setIsLoggedIn(true);
+      if (d.user) { setIsLoggedIn(true); setCurrentUserId(d.user.id); }
     });
     fetchListings();
   }, []);
@@ -82,6 +85,28 @@ export default function MarketplacePage() {
       setMessage({ text: 'Network error', type: 'error' });
     }
     setBuyingId(null);
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  const handleUnlist = async (listing: ListingData) => {
+    setUnlistingId(listing.id);
+    try {
+      const res = await fetch('/api/marketplace', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_card_id: listing.user_card_id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ text: 'Listing removed.', type: 'success' });
+        fetchListings();
+      } else {
+        setMessage({ text: data.error || 'Failed to remove listing', type: 'error' });
+      }
+    } catch {
+      setMessage({ text: 'Network error', type: 'error' });
+    }
+    setUnlistingId(null);
     setTimeout(() => setMessage(null), 3000);
   };
 
@@ -178,14 +203,25 @@ export default function MarketplacePage() {
               <div className="listing-seller">
                 Seller: {listing.seller_name}
               </div>
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={() => handleBuy(listing)}
-                disabled={buyingId === listing.id}
-                style={{ width: '100%', justifyContent: 'center' }}
-              >
-                {buyingId === listing.id ? 'Buying...' : 'Buy Now'}
-              </button>
+              {listing.seller_id === currentUserId ? (
+                <button
+                  className="btn btn-danger btn-sm"
+                  onClick={() => handleUnlist(listing)}
+                  disabled={unlistingId === listing.id}
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  {unlistingId === listing.id ? 'Removing...' : 'Remove Listing'}
+                </button>
+              ) : (
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => handleBuy(listing)}
+                  disabled={buyingId === listing.id}
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  {buyingId === listing.id ? 'Buying...' : 'Buy Now'}
+                </button>
+              )}
             </div>
           ))}
         </div>

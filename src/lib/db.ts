@@ -262,7 +262,8 @@ export interface Card {
 }
 
 export interface UserCard {
-  id: number;
+  id?: number;
+  user_card_id?: number;
   user_id: number;
   card_id: string;
   acquired_at: string;
@@ -312,7 +313,8 @@ export function getUserCards(userId: number, filters?: {
   tierAbbr?: string;
 }): UserCardWithDetails[] {
   let query = `
-    SELECT uc.*, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
+    SELECT uc.id as user_card_id, uc.user_id, uc.card_id, uc.acquired_at, uc.source, uc.is_listed,
+      c.id, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
       c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
       c.rarity, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
@@ -569,8 +571,8 @@ export function hasUserCard(userId: number, cardId: string): boolean {
 
 export function getUserPublicCards(userId: number): UserCardWithDetails[] {
   return getDb().prepare(`
-    SELECT uc.id, uc.user_id, uc.card_id, uc.acquired_at, uc.source, uc.is_listed,
-      c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
+    SELECT uc.id as user_card_id, uc.user_id, uc.card_id, uc.acquired_at, uc.source, uc.is_listed,
+      c.id, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
       c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
       c.rarity, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
@@ -583,8 +585,8 @@ export function getUserPublicCards(userId: number): UserCardWithDetails[] {
 
 function getTradeCards(tradeId: number, side: 'sender' | 'receiver'): UserCardWithDetails[] {
   return getDb().prepare(`
-    SELECT uc.id, uc.user_id, uc.card_id, uc.acquired_at, uc.source, uc.is_listed,
-      c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
+    SELECT uc.id as user_card_id, uc.user_id, uc.card_id, uc.acquired_at, uc.source, uc.is_listed,
+      c.id, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
       c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
       c.rarity, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at

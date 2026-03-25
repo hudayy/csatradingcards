@@ -5,7 +5,8 @@ import TradingCard from '@/components/TradingCard';
 import { ArrowLeftRight, Search, LogIn, ArrowLeft, Plus } from 'lucide-react';
 
 interface CardData {
-  id: number;
+  id: string;
+  user_card_id: number;
   card_id: string;
   player_name: string;
   player_avatar_url: string | null;
@@ -150,8 +151,8 @@ export default function TradesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           receiver_id: selectedUser.id,
-          my_card_id: selectedMyCard.id,
-          their_card_id: selectedTheirCard.id,
+          my_card_id: selectedMyCard.user_card_id,
+          their_card_id: selectedTheirCard.user_card_id,
         }),
       });
       const data = await res.json();
@@ -349,7 +350,7 @@ export default function TradesPage() {
               <div style={{ maxHeight: 360, overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', padding: '0.5rem 0' }}>
                 {theirCards.map((card, i) => (
                   <div
-                    key={`${card.card_id || card.id}-${i}`}
+                    key={`${card.id}-${i}`}
                     onClick={() => setSelectedTheirCard(card)}
                     style={{
                       outline: selectedTheirCard?.id === card.id ? '3px solid var(--accent-blue)' : '3px solid transparent',
@@ -359,7 +360,7 @@ export default function TradesPage() {
                     }}
                   >
                     <TradingCard
-                      card={{ ...card, id: card.card_id || String(card.id) }}
+                      card={{ ...card, id: card.id }}
                       size="small"
                     />
                   </div>
@@ -381,7 +382,7 @@ export default function TradesPage() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', padding: '0.5rem 0' }}>
                 {myCards.map((card, i) => (
                   <div
-                    key={`${card.card_id || card.id}-${i}`}
+                    key={`${card.id}-${i}`}
                     onClick={() => setSelectedMyCard(card)}
                     style={{
                       outline: selectedMyCard?.id === card.id ? '3px solid var(--accent-gold)' : '3px solid transparent',
@@ -391,7 +392,7 @@ export default function TradesPage() {
                     }}
                   >
                     <TradingCard
-                      card={{ ...card, id: card.card_id || String(card.id) }}
+                      card={{ ...card, id: card.id }}
                       size="small"
                     />
                   </div>
@@ -551,8 +552,8 @@ function TradeItem({ trade, userId, type, onAccept, onDecline, onCancel }: Trade
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           {theirCards.map((card, i) => (
             <TradingCard
-              key={`${card.card_id || card.id}-${i}`}
-              card={{ ...card, id: card.card_id || String(card.id) }}
+              key={`${card.id}-${i}`}
+              card={{ ...card, id: card.id }}
               size="small"
             />
           ))}
@@ -564,8 +565,8 @@ function TradeItem({ trade, userId, type, onAccept, onDecline, onCancel }: Trade
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           {myCards.map((card, i) => (
             <TradingCard
-              key={`${card.card_id || card.id}-${i}`}
-              card={{ ...card, id: card.card_id || String(card.id) }}
+              key={`${card.id}-${i}`}
+              card={{ ...card, id: card.id }}
               size="small"
             />
           ))}

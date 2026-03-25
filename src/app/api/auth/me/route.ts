@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSession, COOKIE_NAME } from '@/lib/auth';
 import { getUserByDiscordId, getUserCollectionStats } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const session = await getSession();
   if (!session) {

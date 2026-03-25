@@ -77,9 +77,9 @@ export async function getMembers(params?: { discord_id?: string; csa_name?: stri
   const cached = getCached<CSAMember[]>(cacheKey);
   if (cached) return cached;
 
-  const res = await apiGet<PaginatedResponse<CSAMember>>('/members', { ...params, size: 500 });
-  setCache(cacheKey, res.data);
-  return res.data;
+  const data = await apiGetAllPages<CSAMember>('/members', { ...params });
+  setCache(cacheKey, data, 15 * 60 * 1000);
+  return data;
 }
 
 export async function getMemberById(csaId: number): Promise<CSAMember | null> {

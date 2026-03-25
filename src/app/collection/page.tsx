@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import TradingCard from '@/components/TradingCard';
+import { FolderOpen, LogIn, Package, Coins, Tag } from 'lucide-react';
 
 interface CardData {
   id: string;
@@ -101,11 +102,11 @@ export default function CollectionPage() {
     return (
       <div className="container">
         <div className="empty-state">
-          <div className="empty-state-icon">📁</div>
+          <div className="empty-state-icon"><FolderOpen size={64} /></div>
           <div className="empty-state-title">Login Required</div>
           <div className="empty-state-text">Sign in with Discord to view your card collection.</div>
-          <a href="/api/auth/discord?redirect=/collection" className="btn btn-primary">
-            🎮 Login with Discord
+          <a href="/api/auth/discord?redirect=/collection" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+            <LogIn size={18} /> Login with Discord
           </a>
         </div>
       </div>
@@ -162,10 +163,10 @@ export default function CollectionPage() {
 
       {cards.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon">🎴</div>
+          <div className="empty-state-icon"><Package size={64} /></div>
           <div className="empty-state-title">No Cards Yet</div>
           <div className="empty-state-text">Open packs to start collecting trading cards!</div>
-          <a href="/packs" className="btn btn-primary">🎴 Open Packs</a>
+          <a href="/packs" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><Package size={18} /> Open Packs</a>
         </div>
       ) : (
         <div className="card-grid">
@@ -198,7 +199,7 @@ export default function CollectionPage() {
                   List on Marketplace
                 </div>
                 <div className="price-input-group" style={{ marginBottom: '1rem' }}>
-                  <span className="coin-icon">🪙</span>
+                  <span className="coin-icon"><Coins size={18} /></span>
                   <input
                     type="number"
                     className="modal-input"
@@ -225,8 +226,8 @@ export default function CollectionPage() {
             )}
 
             {selectedCard.is_listed === 1 && (
-              <div style={{ textAlign: 'center', color: 'var(--accent-gold)', fontWeight: 600 }}>
-                📋 This card is currently listed on the marketplace
+              <div style={{ textAlign: 'center', color: 'var(--accent-gold)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
+                <Tag size={16} /> This card is currently listed on the marketplace
               </div>
             )}
           </div>

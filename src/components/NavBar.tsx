@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Coins, LogIn } from 'lucide-react';
 
 interface UserInfo {
   id: number;
@@ -41,7 +42,7 @@ export default function NavBar() {
   return (
     <nav className="nav">
       <Link href="/" className="nav-logo">
-        <span className="logo-icon">🃏</span>
+        <img src="/csacardslogo.png" alt="CSA Cards" className="logo-img" />
         CSA Cards
       </Link>
 
@@ -62,7 +63,7 @@ export default function NavBar() {
         {user ? (
           <>
             <div className="nav-coins">
-              <span>🪙</span>
+              <Coins size={16} />
               <span>{user.coins.toLocaleString()}</span>
             </div>
             <img
@@ -75,7 +76,7 @@ export default function NavBar() {
           </>
         ) : (
           <a href="/api/auth/discord" className="login-btn">
-            <span>🎮</span> Login with Discord
+            <LogIn size={16} /> Login with Discord
           </a>
         )}
       </div>

@@ -1,5 +1,5 @@
 import { v5 as uuidv5 } from 'uuid';
-import { getLeaguePlayers, getPlayerCoreAvgs, getMemberById, getFranchises, getCurrentSeason, type CSALeaguePlayer, type CSAPlayerCoreAvgs } from './csa-api';
+import { getLeaguePlayers, getPlayerCoreAvgs, getMemberById, getFranchises, getFranchiseDetails, getCurrentSeason, type CSALeaguePlayer, type CSAPlayerCoreAvgs, type CSAFranchise } from './csa-api';
 import { insertCard, type Card } from './db';
 
 const CARD_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
@@ -87,6 +87,8 @@ export interface PlayerPool {
   player: CSALeaguePlayer;
   stats: CSAPlayerCoreAvgs | null;
   member: { avatar_url: string | null; discord_id: string } | null;
+  franchise: CSAFranchise | null;
+  franchise_conf: string | null;
 }
 
 let cachedPlayerPool: PlayerPool[] | null = null;
@@ -100,10 +102,17 @@ export async function getPlayerPool(): Promise<PlayerPool[]> {
   const season = await getCurrentSeason();
   if (!season) throw new Error('No current season found');
 
-  const [players, allAvgs] = await Promise.all([
+  // Fetch players, stats, members, franchises, and franchise details concurrently
+  const [players, allAvgs, allMembers, franchises, franchiseDetails] = await Promise.all([
     getLeaguePlayers({ seasonId: season.id, active: true }),
     getPlayerCoreAvgs({ seasonId: season.id, matchType: 'REG' }),
+    import('./csa-api').then(m => m.getMembers()),
+    getFranchises(),
+    getFranchiseDetails(season.id),
   ]);
+
+  const franchiseMap = new Map(franchises.map(f => [f.id, f]));
+  const franchiseConfMap = new Map(franchiseDetails.map(fd => [fd.Franchise.id, fd.conf]));
 
   const avgsByPlayer = new Map<number, CSAPlayerCoreAvgs>();
   for (const avg of allAvgs) {
@@ -114,31 +123,48 @@ export async function getPlayerPool(): Promise<PlayerPool[]> {
     }
   }
 
+  const mapMembers = new Map(allMembers.map(m => [m.csa_id, m]));
+
   const pool: PlayerPool[] = [];
   for (const player of players) {
     if (player.status !== 'ROS' && player.status !== 'IR') continue;
     
     const stats = avgsByPlayer.get(player.Player.csa_id) || null;
+    const mem = mapMembers.get(player.Player.csa_id);
     
+    const franchiseData = player.Franchise ? (franchiseMap.get(player.Franchise.id) || null) : null;
     pool.push({
       player,
       stats,
-      member: { avatar_url: null, discord_id: player.Player.discord_id },
+      member: mem ? { avatar_url: mem.avatar_url, discord_id: mem.discord_id } : { avatar_url: null, discord_id: player.Player.discord_id },
+      franchise: franchiseData,
+      franchise_conf: player.Franchise ? (franchiseConfMap.get(player.Franchise.id) || null) : null,
     });
   }
 
   cachedPlayerPool = pool;
-  poolCacheExpiry = Date.now() + 10 * 60 * 1000;
+  poolCacheExpiry = Date.now() + 4 * 60 * 1000;
   
   return pool;
 }
 
-export async function generateCard(poolEntry: PlayerPool, rarity: Rarity): Promise<Omit<Card, 'created_at'>> {
+export async function generateCard(
+  poolEntry: PlayerPool,
+  rarity: Rarity,
+  seasonOverride?: { id: number; number: number },
+): Promise<Omit<Card, 'created_at'>> {
   const { player, stats } = poolEntry;
-  
-  const season = await getCurrentSeason();
-  const seasonId = season?.id || 1;
-  const seasonNumber = season?.number || 1;
+
+  let seasonId: number;
+  let seasonNumber: number;
+  if (seasonOverride) {
+    seasonId = seasonOverride.id;
+    seasonNumber = seasonOverride.number;
+  } else {
+    const season = await getCurrentSeason();
+    seasonId = season?.id || 1;
+    seasonNumber = season?.number || 1;
+  }
   
   const gpg = stats ? stats.gpg : (player.active_salary / 5000) * 0.5;
   const apg = stats ? stats.apg : (player.active_salary / 5000) * 0.4;
@@ -166,6 +192,10 @@ export async function generateCard(poolEntry: PlayerPool, rarity: Rarity): Promi
     } catch { /* ignore */ }
   }
 
+  const franchiseLogo = poolEntry.franchise?.logo
+    ? (poolEntry.franchise.logo.startsWith('http') ? poolEntry.franchise.logo : `https://api.playcsa.com${poolEntry.franchise.logo}`)
+    : null;
+
   const card: Omit<Card, 'created_at'> = {
     id: cardId,
     player_csa_id: player.Player.csa_id,
@@ -177,7 +207,9 @@ export async function generateCard(poolEntry: PlayerPool, rarity: Rarity): Promi
     franchise_id: player.Franchise?.id || null,
     franchise_name: player.Franchise?.name || null,
     franchise_abbr: player.Franchise?.abbr || null,
-    franchise_color: null,
+    franchise_color: poolEntry.franchise?.color || null,
+    franchise_logo_url: franchiseLogo,
+    franchise_conf: poolEntry.franchise_conf || null,
     tier_name: player.tier || null,
     tier_abbr: player.tier || null,
     rarity,
@@ -203,8 +235,6 @@ export async function generatePackCards(count: number = 5): Promise<Omit<Card, '
   const usedPlayers = new Set<number>();
 
   for (let i = 0; i < count; i++) {
-    const rarity = rollRarity();
-    
     // Pick a random player (avoid duplicates in same pack)
     let attempts = 0;
     let entry: PlayerPool;
@@ -212,9 +242,13 @@ export async function generatePackCards(count: number = 5): Promise<Omit<Card, '
       entry = pool[Math.floor(Math.random() * pool.length)];
       attempts++;
     } while (usedPlayers.has(entry.player.Player.csa_id) && attempts < 50);
-    
+
     usedPlayers.add(entry.player.Player.csa_id);
-    
+
+    // World Class players can only appear as prismatic
+    const isWorldClass = entry.player.tier?.toLowerCase().replace(/[\s_]+/g, '') === 'worldclass';
+    const rarity: Rarity = isWorldClass ? 'prismatic' : rollRarity();
+
     const card = await generateCard(entry, rarity);
     cards.push(card);
   }

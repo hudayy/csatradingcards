@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import TradingCard from '@/components/TradingCard';
+import { Package, FolderOpen, LogIn, Sparkles, Clock, PartyPopper } from 'lucide-react';
 
 interface CardData {
   id: string;
@@ -29,6 +30,8 @@ export default function PacksPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [csaId, setCsaId] = useState<number | null>(null);
+  const [devMode, setDevMode] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -37,6 +40,7 @@ export default function PacksPage() {
     ]).then(([authData, packData]) => {
       if (authData.user) {
         setIsLoggedIn(true);
+        setCsaId(authData.user.csa_id ?? null);
         if (packData.packs_remaining !== undefined) {
           setPacksRemaining(packData.packs_remaining);
         }
@@ -46,14 +50,15 @@ export default function PacksPage() {
   }, []);
 
   const openPack = async () => {
-    if (isOpening || (packsRemaining !== null && packsRemaining <= 0)) return;
-    
+    if (isOpening || (!devMode && packsRemaining !== null && packsRemaining <= 0)) return;
+
     setIsOpening(true);
     setRevealedCards([]);
     setError(null);
 
     try {
-      const res = await fetch('/api/packs/open', { method: 'POST' });
+      const url = devMode ? '/api/packs/open?dev=1' : '/api/packs/open';
+      const res = await fetch(url, { method: 'POST' });
       const data = await res.json();
 
       if (!res.ok) {
@@ -87,13 +92,13 @@ export default function PacksPage() {
     return (
       <div className="container">
         <div className="empty-state">
-          <div className="empty-state-icon">🎴</div>
+          <div className="empty-state-icon"><Package size={64} /></div>
           <div className="empty-state-title">Login Required</div>
           <div className="empty-state-text">
             Sign in with Discord to start opening packs and collecting trading cards.
           </div>
-          <a href="/api/auth/discord?redirect=/packs" className="btn btn-primary">
-            🎮 Login with Discord
+          <a href="/api/auth/discord?redirect=/packs" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+            <LogIn size={18} /> Login with Discord
           </a>
         </div>
       </div>
@@ -133,7 +138,7 @@ export default function PacksPage() {
             }}
           >
             <div className="pack-icon">
-              {isOpening ? '✨' : '🎴'}
+              {isOpening ? <Sparkles size={64} /> : <Package size={64} />}
             </div>
             <div className="pack-label">
               {isOpening ? 'Opening...' : 'Standard Pack'}
@@ -144,22 +149,41 @@ export default function PacksPage() {
           </div>
 
           <div className="pack-remaining">
-            {packsRemaining !== null ? (
-              <>
-                <strong>{packsRemaining}</strong> free pack{packsRemaining !== 1 ? 's' : ''} remaining today
-              </>
+            {devMode ? (
+              <><strong style={{ color: 'var(--accent-green)' }}>∞</strong> packs <span style={{ color: 'var(--accent-green)', fontSize: '0.75rem' }}>(DEV MODE)</span></>
+            ) : packsRemaining !== null ? (
+              <><strong>{packsRemaining}</strong> free pack{packsRemaining !== 1 ? 's' : ''} remaining today</>
             ) : (
               'Loading...'
             )}
           </div>
 
+          {csaId === 121 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={devMode}
+                  onChange={e => setDevMode(e.target.checked)}
+                  style={{ accentColor: 'var(--accent-green)', width: 16, height: 16, cursor: 'pointer' }}
+                />
+                Dev Mode
+              </label>
+              {devMode && (
+                <a href="/admin" className="btn btn-sm btn-secondary" style={{ fontSize: '0.75rem' }}>
+                  Admin Panel →
+                </a>
+              )}
+            </div>
+          )}
+
           <button
             className="btn btn-primary"
             onClick={openPack}
-            disabled={isOpening || (packsRemaining !== null && packsRemaining <= 0)}
+            disabled={isOpening || (!devMode && packsRemaining !== null && packsRemaining <= 0)}
             style={{ fontSize: '1.1rem', padding: '1rem 2.5rem' }}
           >
-            {isOpening ? '✨ Opening...' : packsRemaining === 0 ? '⏰ Come Back Tomorrow' : '🎴 Open Free Pack'}
+            {isOpening ? <><Sparkles size={18} /> Opening...</> : (!devMode && packsRemaining === 0) ? <><Clock size={18} /> Come Back Tomorrow</> : <><Package size={18} /> Open Free Pack</>}
           </button>
         </div>
       ) : (
@@ -170,7 +194,7 @@ export default function PacksPage() {
               fontFamily: 'Orbitron, sans-serif',
               marginBottom: '0.5rem'
             }}>
-              🎉 Pack Opened!
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><PartyPopper size={22} /> Pack Opened!</span>
             </h2>
             <p style={{ color: 'var(--text-secondary)' }}>
               You received {revealedCards.length} new cards
@@ -188,18 +212,20 @@ export default function PacksPage() {
               className="btn btn-primary"
               onClick={() => {
                 setRevealedCards([]);
-                if (packsRemaining && packsRemaining > 0) {
+                if (devMode || (packsRemaining && packsRemaining > 0)) {
                   openPack();
                 }
               }}
-              disabled={packsRemaining !== null && packsRemaining <= 0}
+              disabled={!devMode && packsRemaining !== null && packsRemaining <= 0}
             >
-              {packsRemaining && packsRemaining > 0
-                ? `🎴 Open Another (${packsRemaining} left)`
-                : '⏰ No Packs Remaining'}
+              {devMode
+                ? <><Package size={18} /> Open Another (∞)</>
+                : packsRemaining && packsRemaining > 0
+                  ? <><Package size={18} /> Open Another ({packsRemaining} left)</>
+                  : <><Clock size={18} /> No Packs Remaining</>}
             </button>
-            <a href="/collection" className="btn btn-secondary">
-              📁 View Collection
+            <a href="/collection" className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+              <FolderOpen size={18} /> View Collection
             </a>
           </div>
         </>

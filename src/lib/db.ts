@@ -50,6 +50,8 @@ function initializeSchema(db: Database.Database) {
       franchise_name TEXT,
       franchise_abbr TEXT,
       franchise_color TEXT,
+      franchise_logo_url TEXT,
+      franchise_conf TEXT,
       tier_name TEXT,
       tier_abbr TEXT,
       rarity TEXT NOT NULL CHECK(rarity IN ('bronze','silver','gold','platinum','diamond','holographic','prismatic')),
@@ -142,6 +144,17 @@ function initializeSchema(db: Database.Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_user_cards_user ON user_cards(user_id);
+  `);
+
+  // Migrations for existing DBs
+  for (const col of [
+    'ALTER TABLE cards ADD COLUMN franchise_logo_url TEXT',
+    'ALTER TABLE cards ADD COLUMN franchise_conf TEXT',
+  ]) {
+    try { db.exec(col); } catch { /* already exists */ }
+  }
+
+  db.exec(`
     CREATE INDEX IF NOT EXISTS idx_user_cards_card ON user_cards(card_id);
     CREATE INDEX IF NOT EXISTS idx_cards_player ON cards(player_csa_id);
     CREATE INDEX IF NOT EXISTS idx_cards_rarity ON cards(rarity);
@@ -234,6 +247,8 @@ export interface Card {
   franchise_name: string | null;
   franchise_abbr: string | null;
   franchise_color: string | null;
+  franchise_logo_url: string | null;
+  franchise_conf: string | null;
   tier_name: string | null;
   tier_abbr: string | null;
   rarity: string;
@@ -261,13 +276,14 @@ export function insertCard(card: Omit<Card, 'created_at'>): void {
   getDb().prepare(`
     INSERT OR IGNORE INTO cards (id, player_csa_id, player_name, player_discord_id, player_avatar_url,
       season_id, season_number, franchise_id, franchise_name, franchise_abbr, franchise_color,
-      tier_name, tier_abbr, rarity, stat_gpg, stat_apg, stat_svpg, stat_win_pct, salary, overall_rating)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      franchise_logo_url, franchise_conf, tier_name, tier_abbr, rarity,
+      stat_gpg, stat_apg, stat_svpg, stat_win_pct, salary, overall_rating)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     card.id, card.player_csa_id, card.player_name, card.player_discord_id, card.player_avatar_url,
     card.season_id, card.season_number, card.franchise_id, card.franchise_name, card.franchise_abbr,
-    card.franchise_color, card.tier_name, card.tier_abbr, card.rarity,
-    card.stat_gpg, card.stat_apg, card.stat_svpg, card.stat_win_pct, card.salary, card.overall_rating
+    card.franchise_color, card.franchise_logo_url, card.franchise_conf, card.tier_name, card.tier_abbr,
+    card.rarity, card.stat_gpg, card.stat_apg, card.stat_svpg, card.stat_win_pct, card.salary, card.overall_rating
   );
 }
 
@@ -287,8 +303,8 @@ export function getUserCards(userId: number, filters?: {
   let query = `
     SELECT uc.*, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
-      c.franchise_color, c.tier_name, c.tier_abbr, c.rarity, c.stat_gpg, c.stat_apg,
-      c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
+      c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
+      c.rarity, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
     FROM user_cards uc
     JOIN cards c ON uc.card_id = c.id
     WHERE uc.user_id = ?
@@ -374,8 +390,8 @@ export function getActiveListings(filters?: {
   let query = `
     SELECT ml.*, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
-      c.franchise_color, c.tier_name, c.tier_abbr, c.rarity, c.stat_gpg, c.stat_apg,
-      c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at,
+      c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
+      c.rarity, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at,
       u.discord_username as seller_name, u.avatar_url as seller_avatar
     FROM marketplace_listings ml
     JOIN cards c ON ml.card_id = c.id

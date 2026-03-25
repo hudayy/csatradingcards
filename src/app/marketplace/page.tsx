@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import TradingCard from '@/components/TradingCard';
+import { Search, Store, FolderOpen, LogIn, Coins } from 'lucide-react';
 
 interface ListingData {
   id: number;
@@ -104,13 +105,17 @@ export default function MarketplacePage() {
       )}
 
       {/* Search */}
-      <div style={{ marginBottom: '1rem' }}>
+      <div style={{ marginBottom: '1rem', position: 'relative' }}>
+        <span style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', display: 'flex' }}>
+          <Search size={16} />
+        </span>
         <input
           type="text"
           className="search-input"
-          placeholder="🔍 Search by player name..."
+          placeholder="Search by player name..."
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
+          style={{ paddingLeft: '2.25rem' }}
         />
       </div>
 
@@ -131,7 +136,7 @@ export default function MarketplacePage() {
         <div className="loading-spinner"><div className="spinner" /></div>
       ) : listings.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon">🏪</div>
+          <div className="empty-state-icon"><Store size={64} /></div>
           <div className="empty-state-title">No Listings</div>
           <div className="empty-state-text">
             No cards are currently listed on the marketplace.
@@ -140,9 +145,9 @@ export default function MarketplacePage() {
               : ' Login to start trading!'}
           </div>
           {isLoggedIn ? (
-            <a href="/collection" className="btn btn-primary">📁 Go to Collection</a>
+            <a href="/collection" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><FolderOpen size={18} /> Go to Collection</a>
           ) : (
-            <a href="/api/auth/discord?redirect=/marketplace" className="btn btn-primary">🎮 Login</a>
+            <a href="/api/auth/discord?redirect=/marketplace" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><LogIn size={18} /> Login</a>
           )}
         </div>
       ) : (
@@ -169,7 +174,7 @@ export default function MarketplacePage() {
                 }}
                 size="small"
               />
-              <div className="listing-price">🪙 {listing.price.toLocaleString()}</div>
+              <div className="listing-price" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><Coins size={16} /> {listing.price.toLocaleString()}</div>
               <div className="listing-seller">
                 Seller: {listing.seller_name}
               </div>

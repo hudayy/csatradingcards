@@ -150,6 +150,8 @@ function initializeSchema(db: Database.Database) {
   for (const col of [
     'ALTER TABLE cards ADD COLUMN franchise_logo_url TEXT',
     'ALTER TABLE cards ADD COLUMN franchise_conf TEXT',
+    'ALTER TABLE trades ADD COLUMN sender_coins INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE trades ADD COLUMN receiver_coins INTEGER NOT NULL DEFAULT 0',
   ]) {
     try { db.exec(col); } catch { /* already exists */ }
   }
@@ -552,6 +554,8 @@ export interface Trade {
   id: number;
   sender_id: number;
   receiver_id: number;
+  sender_coins: number;
+  receiver_coins: number;
   status: string;
   created_at: string;
   resolved_at: string | null;
@@ -620,10 +624,14 @@ export function getTradesForUser(userId: number): TradeWithDetails[] {
   }));
 }
 
-export function createTrade(senderId: number, receiverId: number, senderCardIds: number[], receiverCardIds: number[]): number {
+export function createTrade(senderId: number, receiverId: number, senderCardIds: number[], receiverCardIds: number[], senderCoins = 0, receiverCoins = 0): number {
   const database = getDb();
 
-  if (!senderCardIds.length || !receiverCardIds.length) throw new Error('Must offer and request at least one card');
+  if (!senderCardIds.length && !senderCoins) throw new Error('Must offer at least one card or coins');
+  if (!receiverCardIds.length && !receiverCoins) throw new Error('Must request at least one card or coins');
+
+  const sender = database.prepare('SELECT coins FROM users WHERE id = ?').get(senderId) as { coins: number } | undefined;
+  if (senderCoins > 0 && (!sender || sender.coins < senderCoins)) throw new Error('Not enough coins to offer');
 
   for (const id of senderCardIds) {
     const card = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(id, senderId);
@@ -636,7 +644,7 @@ export function createTrade(senderId: number, receiverId: number, senderCardIds:
 
   let tradeId: number;
   database.transaction(() => {
-    const result = database.prepare(`INSERT INTO trades (sender_id, receiver_id, status) VALUES (?, ?, 'pending')`).run(senderId, receiverId);
+    const result = database.prepare(`INSERT INTO trades (sender_id, receiver_id, sender_coins, receiver_coins, status) VALUES (?, ?, ?, ?, 'pending')`).run(senderId, receiverId, senderCoins, receiverCoins);
     tradeId = result.lastInsertRowid as number;
     for (const id of senderCardIds) {
       database.prepare(`INSERT INTO trade_cards (trade_id, user_card_id, side) VALUES (?, ?, 'sender')`).run(tradeId, id);
@@ -669,11 +677,31 @@ export function acceptTrade(tradeId: number, userId: number): { success: boolean
         if (!current) throw new Error('Receiver no longer owns one of the trade cards');
       }
 
+      // Validate coin balances before transferring
+      if (trade.sender_coins > 0) {
+        const s = database.prepare('SELECT coins FROM users WHERE id = ?').get(trade.sender_id) as { coins: number };
+        if (s.coins < trade.sender_coins) throw new Error('Sender no longer has enough coins');
+      }
+      if (trade.receiver_coins > 0) {
+        const r = database.prepare('SELECT coins FROM users WHERE id = ?').get(trade.receiver_id) as { coins: number };
+        if (r.coins < trade.receiver_coins) throw new Error('Receiver no longer has enough coins');
+      }
+
       for (const card of senderCards) {
         database.prepare(`UPDATE user_cards SET user_id = ?, source = 'trade', acquired_at = CURRENT_TIMESTAMP WHERE id = ?`).run(trade.receiver_id, card.user_card_id);
       }
       for (const card of receiverCards) {
         database.prepare(`UPDATE user_cards SET user_id = ?, source = 'trade', acquired_at = CURRENT_TIMESTAMP WHERE id = ?`).run(trade.sender_id, card.user_card_id);
+      }
+
+      // Transfer coins
+      if (trade.sender_coins > 0) {
+        database.prepare('UPDATE users SET coins = coins - ? WHERE id = ?').run(trade.sender_coins, trade.sender_id);
+        database.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(trade.sender_coins, trade.receiver_id);
+      }
+      if (trade.receiver_coins > 0) {
+        database.prepare('UPDATE users SET coins = coins - ? WHERE id = ?').run(trade.receiver_coins, trade.receiver_id);
+        database.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(trade.receiver_coins, trade.sender_id);
       }
 
       database.prepare(`UPDATE trades SET status = 'accepted', resolved_at = CURRENT_TIMESTAMP WHERE id = ?`).run(tradeId);

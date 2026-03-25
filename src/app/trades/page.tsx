@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import TradingCard from '@/components/TradingCard';
-import { ArrowLeftRight, Search, LogIn, X, Check } from 'lucide-react';
+import { ArrowLeftRight, Search, LogIn, X, Check, Coins } from 'lucide-react';
 
 interface CardData {
   id: string;
@@ -41,6 +41,8 @@ interface Trade {
   id: number;
   sender_id: number;
   receiver_id: number;
+  sender_coins: number;
+  receiver_coins: number;
   status: string;
   created_at: string;
   sender_name: string;
@@ -94,6 +96,8 @@ export default function TradesPage() {
   const [myCards, setMyCards] = useState<CardData[]>([]);
   const [selectedTheirCards, setSelectedTheirCards] = useState<Set<number>>(new Set());
   const [selectedMyCards, setSelectedMyCards] = useState<Set<number>>(new Set());
+  const [myCoins, setMyCoins] = useState('');
+  const [theirCoins, setTheirCoins] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -180,6 +184,8 @@ export default function TradesPage() {
           receiver_id: selectedUser.id,
           my_card_ids: Array.from(selectedMyCards),
           their_card_ids: Array.from(selectedTheirCards),
+          my_coins: parseInt(myCoins) || 0,
+          their_coins: parseInt(theirCoins) || 0,
         }),
       });
       const data = await res.json();
@@ -188,6 +194,8 @@ export default function TradesPage() {
         setSelectedUser(null);
         setSelectedTheirCards(new Set());
         setSelectedMyCards(new Set());
+        setMyCoins('');
+        setTheirCoins('');
         fetchTrades();
         setMessage({ type: 'success', text: 'Trade offer sent!' });
       } else {
@@ -226,6 +234,8 @@ export default function TradesPage() {
     setTheirCards([]);
     setSelectedTheirCards(new Set());
     setSelectedMyCards(new Set());
+    setMyCoins('');
+    setTheirCoins('');
     setSearchQuery('');
     setSearchResults([]);
   };
@@ -251,7 +261,9 @@ export default function TradesPage() {
   const outgoing = trades.filter(t => t.sender_id === userId);
   const selectedTheirList = theirCards.filter(c => selectedTheirCards.has(c.user_card_id));
   const selectedMyList = myCards.filter(c => selectedMyCards.has(c.user_card_id));
-  const canSend = selectedTheirCards.size > 0 && selectedMyCards.size > 0 && !!selectedUser;
+  const myCoinsNum = parseInt(myCoins) || 0;
+  const theirCoinsNum = parseInt(theirCoins) || 0;
+  const canSend = !!selectedUser && (selectedMyCards.size > 0 || myCoinsNum > 0) && (selectedTheirCards.size > 0 || theirCoinsNum > 0);
 
   return (
     <div className="container">
@@ -400,18 +412,24 @@ export default function TradesPage() {
                 {/* You receive */}
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '0.75rem', color: 'var(--accent-blue)', fontWeight: 600, marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    You receive ({selectedTheirCards.size})
+                    You receive ({selectedTheirCards.size} card{selectedTheirCards.size !== 1 ? 's' : ''}{theirCoinsNum > 0 ? ` + ${theirCoinsNum.toLocaleString()} coins` : ''})
                   </div>
-                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', minHeight: 28 }}>
-                    {selectedTheirList.length === 0
-                      ? <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>None selected</span>
-                      : selectedTheirList.map(c => (
-                        <div key={c.user_card_id} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 'var(--radius-sm)', padding: '0.2rem 0.5rem', fontSize: '0.78rem', color: 'var(--text-primary)' }}>
-                          {c.player_name}
-                          <button onClick={() => toggleTheirCard(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, display: 'flex', lineHeight: 1 }}><X size={11} /></button>
-                        </div>
-                      ))
-                    }
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center', minHeight: 28 }}>
+                    {selectedTheirList.map(c => (
+                      <div key={c.user_card_id} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 'var(--radius-sm)', padding: '0.2rem 0.5rem', fontSize: '0.78rem', color: 'var(--text-primary)' }}>
+                        {c.player_name}
+                        <button onClick={() => toggleTheirCard(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, display: 'flex', lineHeight: 1 }}><X size={11} /></button>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <Coins size={13} style={{ color: 'var(--accent-blue)', flexShrink: 0 }} />
+                      <input
+                        type="number" min={0} placeholder="0"
+                        value={theirCoins}
+                        onChange={e => setTheirCoins(e.target.value)}
+                        style={{ width: 72, padding: '0.2rem 0.4rem', background: 'var(--bg-secondary)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.78rem' }}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -420,18 +438,24 @@ export default function TradesPage() {
                 {/* You give */}
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: '0.75rem', color: 'var(--accent-gold)', fontWeight: 600, marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    You give ({selectedMyCards.size})
+                    You give ({selectedMyCards.size} card{selectedMyCards.size !== 1 ? 's' : ''}{myCoinsNum > 0 ? ` + ${myCoinsNum.toLocaleString()} coins` : ''})
                   </div>
-                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', minHeight: 28 }}>
-                    {selectedMyList.length === 0
-                      ? <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>None selected</span>
-                      : selectedMyList.map(c => (
-                        <div key={c.user_card_id} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 'var(--radius-sm)', padding: '0.2rem 0.5rem', fontSize: '0.78rem', color: 'var(--text-primary)' }}>
-                          {c.player_name}
-                          <button onClick={() => toggleMyCard(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, display: 'flex', lineHeight: 1 }}><X size={11} /></button>
-                        </div>
-                      ))
-                    }
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center', minHeight: 28 }}>
+                    {selectedMyList.map(c => (
+                      <div key={c.user_card_id} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 'var(--radius-sm)', padding: '0.2rem 0.5rem', fontSize: '0.78rem', color: 'var(--text-primary)' }}>
+                        {c.player_name}
+                        <button onClick={() => toggleMyCard(c)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, display: 'flex', lineHeight: 1 }}><X size={11} /></button>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <Coins size={13} style={{ color: 'var(--accent-gold)', flexShrink: 0 }} />
+                      <input
+                        type="number" min={0} placeholder="0"
+                        value={myCoins}
+                        onChange={e => setMyCoins(e.target.value)}
+                        style={{ width: 72, padding: '0.2rem 0.4rem', background: 'var(--bg-secondary)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.78rem' }}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -497,6 +521,8 @@ function TradeItem({ trade, type, onAccept, onDecline, onCancel }: {
   const otherAvatar = type === 'incoming' ? trade.sender_avatar : trade.receiver_avatar;
   const myCards = type === 'incoming' ? trade.receiver_cards : trade.sender_cards;
   const theirCards = type === 'incoming' ? trade.sender_cards : trade.receiver_cards;
+  const myCoins = type === 'incoming' ? trade.receiver_coins : trade.sender_coins;
+  const theirCoins = type === 'incoming' ? trade.sender_coins : trade.receiver_coins;
 
   return (
     <div style={{
@@ -532,8 +558,13 @@ function TradeItem({ trade, type, onAccept, onDecline, onCancel }: {
           <div style={{ fontSize: '0.7rem', color: 'var(--accent-gold)', fontWeight: 600, marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             You give
           </div>
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
             {myCards.map((card, i) => <TradingCard key={`${card.id}-${i}`} card={card} size="small" />)}
+            {myCoins > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 'var(--radius-sm)', padding: '0.3rem 0.6rem', fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent-gold)' }}>
+                <Coins size={14} /> {myCoins.toLocaleString()}
+              </div>
+            )}
           </div>
         </div>
         <ArrowLeftRight size={18} style={{ color: 'var(--text-muted)', flexShrink: 0, alignSelf: 'center' }} />
@@ -541,8 +572,13 @@ function TradeItem({ trade, type, onAccept, onDecline, onCancel }: {
           <div style={{ fontSize: '0.7rem', color: 'var(--accent-blue)', fontWeight: 600, marginBottom: '0.3rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             You receive
           </div>
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
             {theirCards.map((card, i) => <TradingCard key={`${card.id}-${i}`} card={card} size="small" />)}
+            {theirCoins > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: 'var(--radius-sm)', padding: '0.3rem 0.6rem', fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent-blue)' }}>
+                <Coins size={14} /> {theirCoins.toLocaleString()}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -30,13 +30,18 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { receiver_id, my_card_ids, their_card_ids } = body;
+    const { receiver_id, my_card_ids, their_card_ids, my_coins = 0, their_coins = 0 } = body;
 
-    if (!receiver_id || !Array.isArray(my_card_ids) || !Array.isArray(their_card_ids) || !my_card_ids.length || !their_card_ids.length) {
+    if (!receiver_id) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const tradeId = createTrade(user.id, receiver_id, my_card_ids, their_card_ids);
+    const senderCardIds = Array.isArray(my_card_ids) ? my_card_ids : [];
+    const receiverCardIds = Array.isArray(their_card_ids) ? their_card_ids : [];
+    const senderCoins = Math.max(0, parseInt(my_coins) || 0);
+    const receiverCoins = Math.max(0, parseInt(their_coins) || 0);
+
+    const tradeId = createTrade(user.id, receiver_id, senderCardIds, receiverCardIds, senderCoins, receiverCoins);
     return NextResponse.json({ success: true, trade_id: tradeId });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });

@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Coins, LogIn } from 'lucide-react';
+import { Coins, LogIn, User, LogOut } from 'lucide-react';
 
 interface UserInfo {
   id: number;
@@ -16,6 +16,8 @@ interface UserInfo {
 
 export default function NavBar() {
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
 
   useEffect(() => {
@@ -27,7 +29,18 @@ export default function NavBar() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    if (menuOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
+
   const handleLogout = async () => {
+    setMenuOpen(false);
     await fetch('/api/auth/me', { method: 'DELETE' });
     setUser(null);
     window.location.href = '/';
@@ -70,13 +83,28 @@ export default function NavBar() {
               <Coins size={16} />
               <span>{user.coins.toLocaleString()}</span>
             </div>
-            <img
-              src={user.avatar_url || '/default-avatar.png'}
-              alt={user.discord_username}
-              className="nav-avatar"
-              onClick={handleLogout}
-              title="Click to logout"
-            />
+            <div className="nav-avatar-wrapper" ref={menuRef}>
+              <img
+                src={user.avatar_url || '/default-avatar.png'}
+                alt={user.discord_username}
+                className="nav-avatar"
+                onClick={() => setMenuOpen(o => !o)}
+              />
+              {menuOpen && (
+                <div className="nav-dropdown">
+                  <Link
+                    href="/profile"
+                    className="nav-dropdown-item"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <User size={14} /> My Profile
+                  </Link>
+                  <button className="nav-dropdown-item nav-dropdown-logout" onClick={handleLogout}>
+                    <LogOut size={14} /> Log out
+                  </button>
+                </div>
+              )}
+            </div>
           </>
         ) : (
           <a href="/api/auth/discord" className="login-btn">

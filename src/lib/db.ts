@@ -529,6 +529,60 @@ export function getUserCollectionStats(userId: number) {
   return { total, byRarity, uniquePlayers };
 }
 
+export function getExtendedUserStats(userId: number) {
+  const db = getDb();
+
+  const totalCards = (db.prepare('SELECT COUNT(*) as n FROM user_cards WHERE user_id = ?').get(userId) as { n: number }).n;
+  const listedCards = (db.prepare("SELECT COUNT(*) as n FROM user_cards WHERE user_id = ? AND is_listed = 1").get(userId) as { n: number }).n;
+  const uniquePlayers = (db.prepare(`SELECT COUNT(DISTINCT c.player_csa_id) as n FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.user_id = ?`).get(userId) as { n: number }).n;
+
+  const byRarity = db.prepare(`
+    SELECT c.rarity, COUNT(*) as count FROM user_cards uc
+    JOIN cards c ON uc.card_id = c.id WHERE uc.user_id = ?
+    GROUP BY c.rarity ORDER BY count DESC
+  `).all(userId) as { rarity: string; count: number }[];
+
+  const byFranchise = db.prepare(`
+    SELECT c.franchise_name, c.franchise_logo_url, c.franchise_color, COUNT(*) as count
+    FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+    WHERE uc.user_id = ? AND c.franchise_name IS NOT NULL
+    GROUP BY c.franchise_name ORDER BY count DESC LIMIT 5
+  `).all(userId) as { franchise_name: string; franchise_logo_url: string | null; franchise_color: string | null; count: number }[];
+
+  const bestCard = db.prepare(`
+    SELECT c.player_name, c.rarity, c.overall_rating, c.franchise_name, c.tier_name, c.player_avatar_url
+    FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+    WHERE uc.user_id = ? ORDER BY c.overall_rating DESC LIMIT 1
+  `).get(userId) as { player_name: string; rarity: string; overall_rating: number; franchise_name: string | null; tier_name: string | null; player_avatar_url: string | null } | undefined;
+
+  const totalPacksOpened = (db.prepare('SELECT COUNT(*) as n FROM packs WHERE user_id = ?').get(userId) as { n: number }).n;
+
+  const tradesCompleted = (db.prepare(`
+    SELECT COUNT(*) as n FROM trades
+    WHERE (sender_id = ? OR receiver_id = ?) AND status = 'accepted'
+  `).get(userId, userId) as { n: number }).n;
+
+  const salesCompleted = (db.prepare(`
+    SELECT COUNT(*) as n FROM marketplace_listings WHERE seller_id = ? AND status = 'sold'
+  `).get(userId) as { n: number }).n;
+
+  const purchasesCompleted = (db.prepare(`
+    SELECT COUNT(*) as n FROM marketplace_listings WHERE buyer_id = ? AND status = 'sold'
+  `).get(userId) as { n: number }).n;
+
+  const bySource = db.prepare(`
+    SELECT source, COUNT(*) as count FROM user_cards WHERE user_id = ? GROUP BY source
+  `).all(userId) as { source: string; count: number }[];
+
+  const recentCards = db.prepare(`
+    SELECT c.player_name, c.rarity, c.franchise_name, c.player_avatar_url, uc.acquired_at, uc.source
+    FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+    WHERE uc.user_id = ? ORDER BY uc.acquired_at DESC LIMIT 5
+  `).all(userId) as { player_name: string; rarity: string; franchise_name: string | null; player_avatar_url: string | null; acquired_at: string; source: string }[];
+
+  return { totalCards, listedCards, uniquePlayers, byRarity, byFranchise, bestCard, totalPacksOpened, tradesCompleted, salesCompleted, purchasesCompleted, bySource, recentCards };
+}
+
 // ---- Leaderboard ----
 
 export function getCollectionLeaderboard(limit = 50): (User & { card_count: number })[] {

@@ -1,5 +1,5 @@
 import { v5 as uuidv5 } from 'uuid';
-import { getLeaguePlayers, getPlayerCoreAvgs, getMemberById, getFranchises, getFranchiseDetails, getCurrentSeason, type CSALeaguePlayer, type CSAPlayerCoreAvgs, type CSAFranchise } from './csa-api';
+import { getLeaguePlayers, getPlayerCoreAvgs, getMemberById, getFranchises, getFranchiseDetails, getCurrentSeason, getMembers, type CSALeaguePlayer, type CSAPlayerCoreAvgs, type CSAFranchise } from './csa-api';
 import { insertCard, syncFranchiseDataOnCards, type Card } from './db';
 
 const CARD_NAMESPACE = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
@@ -297,4 +297,86 @@ export async function generatePackCards(count: number = 5, packType: PackType = 
   cards.sort((a, b) => RARITY_ORDER.indexOf(a.rarity as Rarity) - RARITY_ORDER.indexOf(b.rarity as Rarity));
 
   return cards;
+}
+
+// ---- GM Cards ----
+
+export interface GMCardData {
+  id: string;
+  card_type: 'gm';
+  player_name: string;
+  player_avatar_url: string | null;
+  franchise_id: number;
+  franchise_name: string;
+  franchise_abbr: string | null;
+  franchise_logo_url: string | null;
+  franchise_color: string | null;
+  franchise_conf: string | null;
+  tier_name: string | null;
+  tier_abbr: string | null;
+  rarity: string;
+  stat_gpg: number;
+  stat_apg: number;
+  stat_svpg: number;
+  stat_win_pct: number;
+  salary: number;
+  overall_rating: number;
+  season_number: number;
+}
+
+let cachedGMPool: GMCardData[] | null = null;
+let gmPoolCacheExpiry = 0;
+
+export async function getGMPool(): Promise<GMCardData[]> {
+  if (cachedGMPool && Date.now() < gmPoolCacheExpiry) return cachedGMPool;
+
+  const season = await getCurrentSeason();
+
+  const [franchises, franchiseDetails, allMembers] = await Promise.all([
+    getFranchises(),
+    getFranchiseDetails(season?.id),
+    getMembers(),
+  ]);
+
+  const franchiseConfMap = new Map(franchiseDetails.map(fd => [fd.Franchise.id, fd.conf]));
+  const memberMap = new Map(allMembers.map(m => [m.csa_id, m]));
+
+  const gmCards: GMCardData[] = [];
+
+  for (const franchise of franchises) {
+    if (!franchise.active || !franchise.GM?.csa_id) continue;
+
+    const gm = franchise.GM;
+    const member = memberMap.get(gm.csa_id);
+    const logoUrl = franchise.logo
+      ? (franchise.logo.startsWith('http') ? franchise.logo : `https://api.playcsa.com${franchise.logo}`)
+      : null;
+
+    gmCards.push({
+      id: `gm-${franchise.id}-s${season?.number ?? 1}`,
+      card_type: 'gm',
+      player_name: gm.csa_name,
+      player_avatar_url: member?.avatar_url ?? null,
+      franchise_id: franchise.id,
+      franchise_name: franchise.display_name ?? franchise.name,
+      franchise_abbr: franchise.abbr,
+      franchise_logo_url: logoUrl,
+      franchise_color: franchise.color,
+      franchise_conf: franchiseConfMap.get(franchise.id) ?? null,
+      tier_name: null,
+      tier_abbr: null,
+      rarity: 'gm',
+      stat_gpg: 0,
+      stat_apg: 0,
+      stat_svpg: 0,
+      stat_win_pct: 0,
+      salary: 0,
+      overall_rating: 99,
+      season_number: season?.number ?? 1,
+    });
+  }
+
+  cachedGMPool = gmCards;
+  gmPoolCacheExpiry = Date.now() + 4 * 60 * 1000;
+  return gmCards;
 }

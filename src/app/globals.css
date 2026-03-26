@@ -838,6 +838,93 @@ body {
 
 /* Remove old rarity styling conflicts */
 
+/* ---- GM Cards ---- */
+
+/* Override default dark inner shadow so franchise color shows through */
+.gm-card-inner {
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.45) !important;
+  background: transparent !important;
+}
+
+/* Franchise logo in the top-left of GM cards */
+.gm-franchise-logo-top {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 4px rgba(0,0,0,0.5));
+}
+.trading-card-sm .gm-franchise-logo-top { width: 20px; height: 20px; }
+
+/* GM chip badge (top-right) */
+.gm-chip {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #000;
+  font-weight: 900;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  padding: 3px 9px;
+  border-radius: 4px;
+  font-family: 'Orbitron', sans-serif;
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.7), inset 0 1px 0 rgba(255,255,255,0.3);
+}
+.trading-card-sm .gm-chip { font-size: 0.5rem; padding: 2px 6px; }
+
+/* Avatar section: tighten top padding so it doesn't float */
+.gm-avatar-section {
+  padding-top: 0.5rem !important;
+}
+
+/* Concentric rings on GM cards — white instead of rarity colour */
+.gm-rings {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Name section at bottom of GM card */
+.gm-name-section {
+  padding: 0.6rem 0.75rem 0.9rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.gm-player-name {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: 'Orbitron', sans-serif;
+  letter-spacing: 0.03em;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  line-height: 1.15;
+}
+
+.gm-role-label {
+  font-size: 0.5rem;
+  letter-spacing: 0.18em;
+  color: rgba(255, 255, 255, 0.55);
+  font-family: 'Orbitron', sans-serif;
+  font-weight: 600;
+  margin-top: 1px;
+  text-transform: uppercase;
+}
+
+.gm-franchise-name {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #fff;
+  font-family: 'Orbitron', sans-serif;
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.7);
+  line-height: 1.1;
+  margin-top: 2px;
+}
+
+.trading-card-sm .gm-player-name  { font-size: 0.85rem; }
+.trading-card-sm .gm-role-label   { font-size: 0.42rem; }
+.trading-card-sm .gm-franchise-name { font-size: 0.95rem; }
+.trading-card-sm .gm-name-section { padding: 0.4rem 0.5rem 0.6rem; }
+
 /* ---- Card Grid ---- */
 .card-grid {
   display: grid;

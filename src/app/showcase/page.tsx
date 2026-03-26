@@ -1,5 +1,5 @@
 import TradingCard from '@/components/TradingCard';
-import { getPlayerPool, RARITY_ORDER, RARITY_STAT_MULTIPLIER, type Rarity, type PlayerPool } from '@/lib/cards';
+import { getPlayerPool, getGMPool, RARITY_ORDER, RARITY_STAT_MULTIPLIER, type Rarity, type PlayerPool } from '@/lib/cards';
 
 function isWorldClass(tier: string | null | undefined): boolean {
   return tier?.toLowerCase().replace(/[\s_]+/g, '') === 'worldclass';
@@ -11,7 +11,8 @@ function avgSalary(entries: PlayerPool[]): number {
 }
 
 export default async function ShowcasePage() {
-  const pool = await getPlayerPool();
+  const [pool, gmPool] = await Promise.all([getPlayerPool(), getGMPool()]);
+  const randomGM = gmPool.length > 0 ? gmPool[Math.floor(Math.random() * gmPool.length)] : null;
 
   // Group players by their actual tier
   const tierGroups = new Map<string, PlayerPool[]>();
@@ -109,6 +110,22 @@ export default async function ShowcasePage() {
           <TradingCard key={card!.id} card={card!} />
         ))}
       </div>
+
+      {randomGM && (
+        <div style={{ marginTop: '5rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
+            <h2 className="page-title" style={{ fontSize: '1.75rem' }}>GM Cards</h2>
+            <p className="page-subtitle">General Managers — franchise leaders, one per team.</p>
+          </div>
+          <div style={{
+            display: 'flex', justifyContent: 'center',
+            padding: '3rem', background: '#0a0a1a',
+            borderRadius: 'var(--radius-xl)', boxShadow: 'inset 0 0 50px rgba(0,0,0,0.5)',
+          }}>
+            <TradingCard card={randomGM} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

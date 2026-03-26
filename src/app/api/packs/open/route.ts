@@ -25,7 +25,6 @@ export async function POST(request: NextRequest) {
     if (user.coins < cost) {
       return NextResponse.json({ error: `Not enough coins. Need ${cost.toLocaleString()}, you have ${user.coins.toLocaleString()}` }, { status: 400 });
     }
-    updateCoins(user.id, -cost);
   } else {
     const packsToday = isDevMode ? 0 : getPacksOpenedToday(user.id);
     if (!isDevMode && packsToday >= DAILY_FREE_PACKS) {
@@ -34,7 +33,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // Generate cards first — if the CSA API fails, no coins are deducted
     const cards = await generatePackCards(CARDS_PER_PACK, packType);
+
+    if (isPaid) updateCoins(user.id, -PACK_CONFIGS[packType].cost);
+
     const packId = createPack(user.id, packType);
 
     const userCards = cards.map(card => {

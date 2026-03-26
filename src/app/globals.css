@@ -845,6 +845,11 @@ body {
   background: transparent !important;
 }
 
+/* Remove the full-card rainbow color-dodge overlay — franchise color must stay visible */
+.gm-card .trading-card-inner::before {
+  background: none !important;
+}
+
 /* Franchise logo in the top-left of GM cards */
 .gm-franchise-logo-top {
   width: 28px;

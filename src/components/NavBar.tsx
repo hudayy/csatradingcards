@@ -17,6 +17,7 @@ interface UserInfo {
 export default function NavBar() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [bonusToast, setBonusToast] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
 
@@ -24,7 +25,19 @@ export default function NavBar() {
     fetch('/api/auth/me')
       .then(res => res.json())
       .then(data => {
-        if (data.user) setUser(data.user);
+        if (data.user) {
+          setUser(data.user);
+          fetch('/api/auth/daily-bonus', { method: 'POST' })
+            .then(r => r.json())
+            .then(bonus => {
+              if (bonus.claimed) {
+                setUser(u => u ? { ...u, coins: bonus.newBalance } : u);
+                setBonusToast(`+${bonus.amount} daily bonus!`);
+                setTimeout(() => setBonusToast(null), 4000);
+              }
+            })
+            .catch(() => {});
+        }
       })
       .catch(() => {});
   }, []);
@@ -57,6 +70,12 @@ export default function NavBar() {
   ];
 
   return (
+    <>
+    {bonusToast && (
+      <div className="daily-bonus-toast">
+        <Coins size={16} /> {bonusToast}
+      </div>
+    )}
     <nav className="nav">
       <Link href="/" className="nav-logo">
         <img src="/csacardslogo.png" alt="CSA Cards" className="logo-img" />
@@ -113,5 +132,6 @@ export default function NavBar() {
         )}
       </div>
     </nav>
+    </>
   );
 }

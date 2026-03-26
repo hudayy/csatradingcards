@@ -2,7 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import TradingCard from '@/components/TradingCard';
-import { FolderOpen, LogIn, Package, Coins, Tag } from 'lucide-react';
+import { FolderOpen, LogIn, Package, Coins, Tag, Flame } from 'lucide-react';
+
+const SALVAGE_VALUES: Record<string, number> = {
+  bronze: 10, silver: 16, gold: 22, platinum: 40,
+  diamond: 80, holographic: 267, prismatic: 800,
+};
 
 interface CardData {
   id: string;
@@ -36,6 +41,8 @@ export default function CollectionPage() {
   const [listPrice, setListPrice] = useState('');
   const [listingStatus, setListingStatus] = useState<string | null>(null);
   const [unlisting, setUnlisting] = useState(false);
+  const [salvaging, setSalvaging] = useState(false);
+  const [salvageConfirm, setSalvageConfirm] = useState(false);
 
   const fetchCards = async (rarity?: string) => {
     const params = new URLSearchParams();
@@ -121,6 +128,32 @@ export default function CollectionPage() {
       setListingStatus('Network error');
     }
     setUnlisting(false);
+  };
+
+  const handleSalvage = async () => {
+    if (!selectedCard) return;
+    setSalvaging(true);
+    try {
+      const res = await fetch('/api/collection/salvage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_card_id: selectedCard.user_card_id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setListingStatus(`Salvaged for ${data.coins} coins!`);
+        setSelectedCard(null);
+        setSalvageConfirm(false);
+        fetchCards(selectedRarity);
+        fetchAllCards();
+        setTimeout(() => setListingStatus(null), 2500);
+      } else {
+        setListingStatus(data.error || 'Salvage failed');
+      }
+    } catch {
+      setListingStatus('Network error');
+    }
+    setSalvaging(false);
   };
 
   if (loading) {
@@ -215,11 +248,11 @@ export default function CollectionPage() {
 
       {/* List Card Modal */}
       {selectedCard && (
-        <div className="modal-overlay" onClick={() => setSelectedCard(null)}>
+        <div className="modal-overlay" onClick={() => { setSelectedCard(null); setSalvageConfirm(false); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">Card Details</h3>
-              <button className="modal-close" onClick={() => setSelectedCard(null)}>×</button>
+              <button className="modal-close" onClick={() => { setSelectedCard(null); setSalvageConfirm(false); }}>×</button>
             </div>
             
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
@@ -243,8 +276,8 @@ export default function CollectionPage() {
                     style={{ marginBottom: 0 }}
                   />
                 </div>
-                <div className="modal-actions">
-                  <button className="btn btn-secondary" onClick={() => setSelectedCard(null)}>
+                <div className="modal-actions" style={{ marginBottom: '1rem' }}>
+                  <button className="btn btn-secondary" onClick={() => { setSelectedCard(null); setSalvageConfirm(false); }}>
                     Cancel
                   </button>
                   <button
@@ -254,6 +287,31 @@ export default function CollectionPage() {
                   >
                     List for Sale
                   </button>
+                </div>
+
+                {/* Salvage section */}
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1rem' }}>
+                  {!salvageConfirm ? (
+                    <button
+                      className="btn btn-secondary"
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: '#f97316' }}
+                      onClick={() => setSalvageConfirm(true)}
+                    >
+                      <Flame size={15} /> Salvage for {SALVAGE_VALUES[selectedCard.rarity] ?? 10} coins
+                    </button>
+                  ) : (
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ marginBottom: '0.6rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        This will permanently destroy the card. Are you sure?
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                        <button className="btn btn-secondary" onClick={() => setSalvageConfirm(false)}>No, keep it</button>
+                        <button className="btn btn-danger" onClick={handleSalvage} disabled={salvaging}>
+                          {salvaging ? 'Salvaging...' : 'Yes, salvage it'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}

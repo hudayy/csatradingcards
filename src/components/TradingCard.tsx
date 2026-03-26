@@ -49,13 +49,13 @@ export default function TradingCard({ card, onClick, showPrice, size = 'normal' 
   
   const getRarityDisplay = (r: string) => {
     switch (r) {
-      case 'bronze': return 'NORMAL';
+      case 'bronze': return 'BRONZE';
       case 'silver': return 'SILVER';
       case 'gold': return 'GOLD';
       case 'platinum': return 'PLATINUM';
       case 'diamond': return 'DIAMOND';
       case 'holographic': return 'HOLO';
-      case 'prismatic': return 'FOIL';
+      case 'prismatic': return 'PRISMATIC';
       default: return r.toUpperCase();
     }
   };

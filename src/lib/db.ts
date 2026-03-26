@@ -154,8 +154,30 @@ function initializeSchema(db: Database.Database) {
     'ALTER TABLE trades ADD COLUMN sender_coins INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE trades ADD COLUMN receiver_coins INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN last_daily_bonus DATE',
   ]) {
     try { db.exec(col); } catch { /* already exists */ }
+  }
+
+  // Expand coin_transactions type CHECK if it's still the old restrictive one
+  const ctInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='coin_transactions'").get() as { sql: string } | undefined;
+  if (ctInfo?.sql.includes('type IN (')) {
+    db.exec(`
+      ALTER TABLE coin_transactions RENAME TO coin_transactions_old;
+      CREATE TABLE coin_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        amount INTEGER NOT NULL,
+        balance_after INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        description TEXT,
+        reference_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+      INSERT INTO coin_transactions SELECT * FROM coin_transactions_old;
+      DROP TABLE coin_transactions_old;
+    `);
   }
 
   db.exec(`
@@ -507,6 +529,57 @@ export function recordCoinTransaction(userId: number, amount: number, balanceAft
     INSERT INTO coin_transactions (user_id, amount, balance_after, type, description, reference_id)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(userId, amount, balanceAfter, type, description, referenceId ?? null);
+}
+
+export const DAILY_BONUS_AMOUNT = 100;
+
+export function claimDailyBonus(userId: number): { claimed: boolean; amount: number; newBalance: number } {
+  const database = getDb();
+  const today = new Date().toISOString().split('T')[0];
+  const user = getUserById(userId);
+  if (!user) return { claimed: false, amount: 0, newBalance: 0 };
+  if ((user as User & { last_daily_bonus: string | null }).last_daily_bonus === today) {
+    return { claimed: false, amount: 0, newBalance: user.coins };
+  }
+  database.prepare('UPDATE users SET coins = coins + ?, last_daily_bonus = ? WHERE id = ?').run(DAILY_BONUS_AMOUNT, today, userId);
+  const updated = getUserById(userId)!;
+  recordCoinTransaction(userId, DAILY_BONUS_AMOUNT, updated.coins, 'daily_bonus', 'Daily login bonus');
+  return { claimed: true, amount: DAILY_BONUS_AMOUNT, newBalance: updated.coins };
+}
+
+export const SALVAGE_VALUES: Record<string, number> = {
+  bronze: 10,
+  silver: 16,
+  gold: 22,
+  platinum: 40,
+  diamond: 80,
+  holographic: 267,
+  prismatic: 800,
+};
+
+export function salvageCard(userId: number, userCardId: number): { coins: number; newBalance: number } {
+  const database = getDb();
+  const row = database.prepare(`
+    SELECT uc.id, uc.user_id, uc.is_listed, c.rarity
+    FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+    WHERE uc.id = ?
+  `).get(userCardId) as { id: number; user_id: number; is_listed: number; rarity: string } | undefined;
+
+  if (!row) throw new Error('Card not found');
+  if (row.user_id !== userId) throw new Error('Not your card');
+  if (row.is_listed) throw new Error('Cannot salvage a listed card');
+
+  const coins = SALVAGE_VALUES[row.rarity] ?? 10;
+
+  database.transaction(() => {
+    database.prepare('DELETE FROM pack_cards WHERE user_card_id = ?').run(userCardId);
+    database.prepare('DELETE FROM user_cards WHERE id = ?').run(userCardId);
+    database.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(coins, userId);
+  })();
+
+  const updated = getUserById(userId)!;
+  recordCoinTransaction(userId, coins, updated.coins, 'salvage', `Salvaged ${row.rarity} card`);
+  return { coins, newBalance: updated.coins };
 }
 
 // ---- Collection stats ----

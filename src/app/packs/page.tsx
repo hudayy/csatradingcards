@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import TradingCard from '@/components/TradingCard';
 import { Package, FolderOpen, LogIn, Sparkles, Clock, PartyPopper } from 'lucide-react';
 
@@ -34,14 +34,6 @@ export default function PacksPage() {
   const [csaId, setCsaId] = useState<number | null>(null);
   const [isUserAdmin, setIsUserAdmin] = useState(false);
   const [devMode, setDevMode] = useState(false);
-  const isDragging = useRef(false);
-
-  useEffect(() => {
-    function onMouseUp() { isDragging.current = false; }
-    window.addEventListener('mouseup', onMouseUp);
-    return () => window.removeEventListener('mouseup', onMouseUp);
-  }, []);
-
   useEffect(() => {
     Promise.all([
       fetch('/api/auth/me').then(r => r.json()),
@@ -210,19 +202,24 @@ export default function PacksPage() {
                 ? `${revealedCards.length - flippedCards.size} card${revealedCards.length - flippedCards.size !== 1 ? 's' : ''} left to reveal — click to flip`
                 : 'All cards revealed!'}
             </p>
+            {flippedCards.size < revealedCards.length && (
+              <button
+                className="btn btn-secondary"
+                style={{ marginTop: '0.5rem', fontSize: '0.85rem', padding: '0.4rem 1rem' }}
+                onClick={() => setFlippedCards(new Set(revealedCards.map((_, i) => i)))}
+              >
+                Reveal All
+              </button>
+            )}
           </div>
 
-          <div
-            className="pack-reveal"
-            onMouseDown={() => { isDragging.current = true; }}
-          >
+          <div className="pack-reveal">
             {revealedCards.map((card, i) => (
               <div
                 key={card.id}
                 className={`card-flip-wrapper${flippedCards.has(i) ? ' is-flipped' : ''}`}
                 style={{ '--flip-delay': `${i * 0.08}s` } as React.CSSProperties}
                 onClick={() => { if (!flippedCards.has(i)) setFlippedCards(prev => new Set([...prev, i])); }}
-                onMouseEnter={() => { if (isDragging.current && !flippedCards.has(i)) setFlippedCards(prev => new Set([...prev, i])); }}
               >
                 <div className="card-flip-inner">
                   <div className="card-back">

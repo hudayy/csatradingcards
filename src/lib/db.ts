@@ -183,6 +183,7 @@ function initializeSchema(db: Database.Database) {
   // Remove restrictive CHECK from packs.pack_type to support new pack types
   const packsInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='packs'").get() as { sql: string } | undefined;
   if (packsInfo?.sql.includes('CHECK(pack_type IN')) {
+    db.pragma('foreign_keys = OFF');
     db.exec(`
       CREATE TABLE packs_new (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -195,6 +196,7 @@ function initializeSchema(db: Database.Database) {
       DROP TABLE packs;
       ALTER TABLE packs_new RENAME TO packs;
     `);
+    db.pragma('foreign_keys = ON');
   }
 
   db.exec(`

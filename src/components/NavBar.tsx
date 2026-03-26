@@ -62,6 +62,7 @@ export default function NavBar() {
   const links = [
     { href: '/', label: 'Home' },
     { href: '/packs', label: 'Open Packs' },
+    { href: '/shop', label: 'Shop' },
     { href: '/collection', label: 'Collection' },
     { href: '/collection/binders', label: 'Binders' },
     { href: '/marketplace', label: 'Marketplace' },

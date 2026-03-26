@@ -48,6 +48,51 @@ export const RARITY_LABELS: Record<Rarity, string> = {
   prismatic: 'Prismatic',
 };
 
+export type PackType = 'standard' | 'elite' | 'apex';
+
+export const PACK_CONFIGS: Record<PackType, {
+  name: string;
+  subtitle: string;
+  flavour: string;
+  cost: number;
+  allowedRarities: Rarity[];
+}> = {
+  standard: {
+    name: 'Challenger Pack',
+    subtitle: 'All Rarities',
+    flavour: 'Build your roster. Every rarity in the game.',
+    cost: 100,
+    allowedRarities: [...RARITY_ORDER],
+  },
+  elite: {
+    name: 'Elite Pack',
+    subtitle: 'Silver & Above',
+    flavour: 'No commons. No compromises.',
+    cost: 500,
+    allowedRarities: ['silver', 'gold', 'platinum', 'diamond', 'holographic', 'prismatic'],
+  },
+  apex: {
+    name: 'Apex Pack',
+    subtitle: 'Diamond & Above',
+    flavour: 'Only the rarest survive.',
+    cost: 2000,
+    allowedRarities: ['diamond', 'holographic', 'prismatic'],
+  },
+};
+
+export function rollRarityForPack(packType: PackType): Rarity {
+  const allowed = PACK_CONFIGS[packType].allowedRarities;
+  const total = allowed.reduce((sum, r) => sum + RARITY_DROP_RATES[r], 0);
+  const roll = Math.random() * total;
+  let cumulative = 0;
+  for (const rarity of RARITY_ORDER) {
+    if (!allowed.includes(rarity)) continue;
+    cumulative += RARITY_DROP_RATES[rarity];
+    if (roll < cumulative) return rarity;
+  }
+  return allowed[0];
+}
+
 export function rollRarity(): Rarity {
   const roll = Math.random();
   let cumulative = 0;
@@ -236,7 +281,7 @@ export async function generateCard(
   return card;
 }
 
-export async function generatePackCards(count: number = 5): Promise<Omit<Card, 'created_at'>[]> {
+export async function generatePackCards(count: number = 5, packType: PackType = 'standard'): Promise<Omit<Card, 'created_at'>[]> {
   const pool = await getPlayerPool();
   if (pool.length === 0) throw new Error('No players available for card generation');
 
@@ -259,14 +304,13 @@ export async function generatePackCards(count: number = 5): Promise<Omit<Card, '
   }
 
   for (let i = 0; i < count; i++) {
-    const rarity = rollRarity();
+    const rarity = rollRarityForPack(packType);
+    const topRarity = PACK_CONFIGS[packType].allowedRarities[PACK_CONFIGS[packType].allowedRarities.length - 1];
 
     let entry: PlayerPool;
-    if (rarity === 'prismatic' && wcPool.length > 0) {
-      // Prismatic slot: prefer World Class players
+    if (rarity === topRarity && wcPool.length > 0) {
       entry = pickFrom(wcPool);
     } else {
-      // Non-prismatic slot: only pick from non-World Class players
       entry = pickFrom(pickablePool);
     }
 

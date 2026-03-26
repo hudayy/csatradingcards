@@ -180,6 +180,23 @@ function initializeSchema(db: Database.Database) {
     `);
   }
 
+  // Remove restrictive CHECK from packs.pack_type to support new pack types
+  const packsInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='packs'").get() as { sql: string } | undefined;
+  if (packsInfo?.sql.includes('CHECK(pack_type IN')) {
+    db.exec(`
+      CREATE TABLE packs_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        pack_type TEXT NOT NULL DEFAULT 'standard',
+        opened_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      );
+      INSERT INTO packs_new SELECT * FROM packs;
+      DROP TABLE packs;
+      ALTER TABLE packs_new RENAME TO packs;
+    `);
+  }
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_user_cards_card ON user_cards(card_id);
     CREATE INDEX IF NOT EXISTS idx_cards_player ON cards(player_csa_id);
@@ -396,6 +413,27 @@ export function createPack(userId: number, packType: string = 'standard'): numbe
 
 export function addCardToPack(packId: number, cardId: string, userCardId: number): void {
   getDb().prepare('INSERT INTO pack_cards (pack_id, card_id, user_card_id) VALUES (?, ?, ?)').run(packId, cardId, userCardId);
+}
+
+export function getPackHistory(userId: number): {
+  id: number;
+  pack_type: string;
+  opened_at: string;
+  cards: { rarity: string; player_name: string; player_avatar_url: string | null; franchise_color: string | null; overall_rating: number }[];
+}[] {
+  const database = getDb();
+  const packs = database.prepare(
+    'SELECT id, pack_type, opened_at FROM packs WHERE user_id = ? ORDER BY opened_at DESC LIMIT 100'
+  ).all(userId) as { id: number; pack_type: string; opened_at: string }[];
+
+  return packs.map(pack => {
+    const cards = database.prepare(`
+      SELECT c.rarity, c.player_name, c.player_avatar_url, c.franchise_color, c.overall_rating
+      FROM pack_cards pc JOIN cards c ON pc.card_id = c.id
+      WHERE pc.pack_id = ?
+    `).all(pack.id) as { rarity: string; player_name: string; player_avatar_url: string | null; franchise_color: string | null; overall_rating: number }[];
+    return { ...pack, cards };
+  });
 }
 
 // ---- Marketplace ----

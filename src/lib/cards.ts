@@ -289,8 +289,10 @@ export async function generatePackCards(count: number = 5, packType: PackType = 
   const [pool, gmPool] = await Promise.all([getPlayerPool(), getGMPool()]);
   if (pool.length === 0) throw new Error('No players available for card generation');
 
-  const wcPool = pool.filter(e => e.player.tier?.toLowerCase().replace(/[\s_]+/g, '') === 'worldclass');
-  const normalPool = pool.filter(e => e.player.tier?.toLowerCase().replace(/[\s_]+/g, '') !== 'worldclass');
+  const gmCsaIds = new Set(gmPool.map(g => g.gm_csa_id));
+  const playerPool = pool.filter(e => !gmCsaIds.has(e.player.Player.csa_id));
+  const wcPool = playerPool.filter(e => e.player.tier?.toLowerCase().replace(/[\s_]+/g, '') === 'worldclass');
+  const normalPool = playerPool.filter(e => e.player.tier?.toLowerCase().replace(/[\s_]+/g, '') !== 'worldclass');
 
   const cards: Omit<Card, 'created_at'>[] = [];
   const usedPlayerIds = new Set<number>();

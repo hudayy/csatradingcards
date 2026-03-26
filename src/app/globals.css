@@ -923,6 +923,7 @@ body {
   perspective: 1200px;
   width: 260px;
   height: 400px; /* 260 / 0.65 */
+  overflow: visible;
   animation: cardDrop 0.5s ease backwards;
   animation-delay: var(--flip-delay, 0s);
 }
@@ -937,6 +938,7 @@ body {
   width: 100%;
   height: 100%;
   transform-style: preserve-3d;
+  overflow: visible;
   transition: transform 0.65s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -990,10 +992,10 @@ body {
 }
 
 .card-back-logo {
-  width: 80px;
-  height: 80px;
+  width: 150px;
+  height: 150px;
   object-fit: contain;
-  filter: drop-shadow(0 0 10px rgba(240, 192, 64, 0.4));
+  filter: drop-shadow(0 0 14px rgba(240, 192, 64, 0.5));
   position: relative;
   z-index: 1;
 }
@@ -1026,8 +1028,7 @@ body {
 /* Front: hidden by default (back of the unflipped card), revealed after flip */
 .card-face {
   transform: rotateY(180deg);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* ---- Filters ---- */

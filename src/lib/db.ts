@@ -520,40 +520,41 @@ export function getActiveListings(filters?: {
   return getDb().prepare(query).all(...params) as ListingWithDetails[];
 }
 
-export function buyListing(listingId: number, buyerId: number): { success: boolean; error?: string } {
+export function buyListing(listingId: number, buyerId: number): { success: boolean; error?: string; new_balance?: number } {
   const database = getDb();
-  
+
   try {
     database.transaction(() => {
       const listing = database.prepare('SELECT * FROM marketplace_listings WHERE id = ? AND status = ?').get(listingId, 'active') as MarketplaceListing | undefined;
       if (!listing) throw new Error('Listing not found or already sold');
-      
+
       if (listing.seller_id === buyerId) throw new Error('Cannot buy your own listing');
-      
+
       const buyer = getUserById(buyerId);
       if (!buyer || buyer.coins < listing.price) throw new Error('Insufficient coins');
-      
+
       // Transfer coins
       updateCoins(buyerId, -listing.price);
       updateCoins(listing.seller_id, listing.price);
-      
+
       // Transfer card ownership
       database.prepare('UPDATE user_cards SET user_id = ?, source = ?, is_listed = 0, acquired_at = CURRENT_TIMESTAMP WHERE id = ?')
         .run(buyerId, 'marketplace', listing.user_card_id);
-      
+
       // Update listing
       database.prepare('UPDATE marketplace_listings SET status = ?, buyer_id = ?, sold_at = CURRENT_TIMESTAMP WHERE id = ?')
         .run('sold', buyerId, listingId);
-      
+
       // Record transactions
       const buyerAfter = getUserById(buyerId)!;
       const sellerAfter = getUserById(listing.seller_id)!;
-      
+
       recordCoinTransaction(buyerId, -listing.price, buyerAfter.coins, 'marketplace_buy', `Purchased card from marketplace`, String(listingId));
       recordCoinTransaction(listing.seller_id, listing.price, sellerAfter.coins, 'marketplace_sale', `Sold card on marketplace`, String(listingId));
     })();
-    
-    return { success: true };
+
+    const buyerAfter = getUserById(buyerId)!;
+    return { success: true, new_balance: buyerAfter.coins };
   } catch (e) {
     return { success: false, error: (e as Error).message };
   }
@@ -680,6 +681,39 @@ export function salvageCard(userId: number, userCardId: number): { coins: number
   const updated = getUserById(userId)!;
   recordCoinTransaction(userId, coins, updated.coins, 'salvage', `Salvaged ${row.rarity} card`);
   return { coins, newBalance: updated.coins };
+}
+
+export function bulkSalvageCards(userId: number, userCardIds: number[]): { totalCoins: number; newBalance: number; count: number } {
+  const database = getDb();
+  let totalCoins = 0;
+  let count = 0;
+
+  database.transaction(() => {
+    for (const userCardId of userCardIds) {
+      const row = database.prepare(`
+        SELECT uc.id, uc.user_id, uc.is_listed, c.rarity
+        FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+        WHERE uc.id = ?
+      `).get(userCardId) as { id: number; user_id: number; is_listed: number; rarity: string } | undefined;
+
+      if (!row || row.user_id !== userId || row.is_listed) continue;
+
+      const coins = SALVAGE_VALUES[row.rarity] ?? 10;
+      totalCoins += coins;
+      count++;
+      database.prepare('DELETE FROM pack_cards WHERE user_card_id = ?').run(userCardId);
+      database.prepare('DELETE FROM user_cards WHERE id = ?').run(userCardId);
+    }
+    if (totalCoins > 0) {
+      database.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(totalCoins, userId);
+    }
+  })();
+
+  const updated = getUserById(userId)!;
+  if (totalCoins > 0) {
+    recordCoinTransaction(userId, totalCoins, updated.coins, 'salvage', `Bulk salvaged ${count} cards`);
+  }
+  return { totalCoins, newBalance: updated.coins, count };
 }
 
 // ---- Collection stats ----

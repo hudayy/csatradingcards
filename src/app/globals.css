@@ -940,6 +940,7 @@ body {
   transform-style: preserve-3d;
   overflow: visible;
   transition: transform 0.65s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
 }
 
 .card-flip-wrapper.is-flipped .card-flip-inner {
@@ -976,6 +977,9 @@ body {
   cursor: pointer;
   box-shadow: 0 0 24px rgba(240, 192, 64, 0.15), inset 0 0 60px rgba(0,0,0,0.5);
   overflow: hidden;
+  /* Force GPU compositing layer so backface-visibility applies correctly to all children */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
 }
 
 .card-back::before {
@@ -1005,7 +1009,9 @@ body {
   object-fit: contain;
   filter: drop-shadow(0 0 14px rgba(240, 192, 64, 0.5));
   position: relative;
-  z-index: 1;
+  /* z-index removed: stacking contexts on children caused backface-visibility glitch */
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .card-back-label {
@@ -1015,7 +1021,8 @@ body {
   color: var(--accent-gold);
   letter-spacing: 0.05em;
   position: relative;
-  z-index: 1;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .card-back-hint {
@@ -1024,8 +1031,9 @@ body {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   position: relative;
-  z-index: 1;
   animation: hintPulse 2s ease-in-out infinite;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 @keyframes hintPulse {
@@ -1843,6 +1851,100 @@ body {
 
 .inv-open-btn:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
 .inv-open-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+/* ===== BULK SALVAGE ===== */
+
+.card-select-wrapper {
+  position: relative;
+  display: inline-block;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.card-select-wrapper.selected .trading-card {
+  outline: 2.5px solid var(--accent-gold);
+  outline-offset: 3px;
+  border-radius: var(--radius-lg);
+}
+
+.card-select-wrapper.selected::after {
+  content: '✓';
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 22px; height: 22px;
+  background: var(--accent-gold);
+  color: #000;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 0.7rem;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.card-select-wrapper.not-selectable {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@keyframes bulkBarSlideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.bulk-salvage-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 500;
+  background: linear-gradient(135deg, #1c0e00, #2a1600);
+  border-top: 2px solid #d97706;
+  padding: 0.9rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  animation: bulkBarSlideUp 0.2s ease;
+  box-shadow: 0 -8px 32px rgba(0,0,0,0.5);
+}
+
+.bulk-salvage-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.bulk-salvage-info strong {
+  color: var(--text-primary);
+}
+
+.bulk-salvage-btn {
+  background: linear-gradient(135deg, #92400e, #d97706, #fbbf24);
+  color: #000;
+  font-weight: 800;
+  padding: 0.7rem 1.5rem;
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: filter 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+
+.bulk-salvage-btn:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+.bulk-salvage-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+@media (max-width: 768px) {
+  .bulk-salvage-bar { padding: 0.75rem 1rem; }
+  .bulk-salvage-btn { font-size: 0.82rem; padding: 0.6rem 1rem; }
+}
 
 /* ================================================================
    MOBILE NAV DRAWER (always in DOM, shown only on mobile)

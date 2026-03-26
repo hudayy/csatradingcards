@@ -49,6 +49,15 @@ export default function NavBar() {
   }, []);
 
   useEffect(() => {
+    function handler(e: Event) {
+      const balance = (e as CustomEvent<{ balance: number }>).detail?.balance;
+      if (balance !== undefined) setUser(u => u ? { ...u, coins: balance } : u);
+    }
+    window.addEventListener('coinsUpdated', handler);
+    return () => window.removeEventListener('coinsUpdated', handler);
+  }, []);
+
+  useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);

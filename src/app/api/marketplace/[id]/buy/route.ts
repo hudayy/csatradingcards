@@ -28,5 +28,5 @@ export async function POST(
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, new_balance: result.new_balance });
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import TradingCard from '@/components/TradingCard';
 import { Package, FolderOpen, LogIn, Sparkles, Clock, PartyPopper } from 'lucide-react';
 
@@ -34,6 +34,13 @@ export default function PacksPage() {
   const [csaId, setCsaId] = useState<number | null>(null);
   const [isUserAdmin, setIsUserAdmin] = useState(false);
   const [devMode, setDevMode] = useState(false);
+  const isDragging = useRef(false);
+
+  useEffect(() => {
+    function onMouseUp() { isDragging.current = false; }
+    window.addEventListener('mouseup', onMouseUp);
+    return () => window.removeEventListener('mouseup', onMouseUp);
+  }, []);
 
   useEffect(() => {
     Promise.all([
@@ -205,17 +212,17 @@ export default function PacksPage() {
             </p>
           </div>
 
-          <div className="pack-reveal">
+          <div
+            className="pack-reveal"
+            onMouseDown={() => { isDragging.current = true; }}
+          >
             {revealedCards.map((card, i) => (
               <div
                 key={card.id}
                 className={`card-flip-wrapper${flippedCards.has(i) ? ' is-flipped' : ''}`}
                 style={{ '--flip-delay': `${i * 0.08}s` } as React.CSSProperties}
-                onClick={() => {
-                  if (!flippedCards.has(i)) {
-                    setFlippedCards(prev => new Set([...prev, i]));
-                  }
-                }}
+                onClick={() => { if (!flippedCards.has(i)) setFlippedCards(prev => new Set([...prev, i])); }}
+                onMouseEnter={() => { if (isDragging.current && !flippedCards.has(i)) setFlippedCards(prev => new Set([...prev, i])); }}
               >
                 <div className="card-flip-inner">
                   <div className="card-back">

@@ -77,6 +77,7 @@ export default function MarketplacePage() {
 
       if (data.success) {
         setMessage({ text: `Successfully purchased ${listing.player_name}'s card!`, type: 'success' });
+        if (data.new_balance !== undefined) window.dispatchEvent(new CustomEvent('coinsUpdated', { detail: { balance: data.new_balance } }));
         fetchListings();
       } else {
         setMessage({ text: data.error || 'Purchase failed', type: 'error' });

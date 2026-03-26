@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import TradingCard from '@/components/TradingCard';
-import { FolderOpen, LogIn, Package, Coins, Tag, Flame, ChevronLeft } from 'lucide-react';
+import { FolderOpen, LogIn, Package, Coins, Tag, Flame, ChevronLeft, Layers } from 'lucide-react';
 
 interface InventoryPack {
   id: number;
@@ -90,6 +90,18 @@ export default function CollectionPage() {
   const [revealCards, setRevealCards] = useState<CardData[] | null>(null);
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
   const [openingId, setOpeningId] = useState<number | null>(null);
+  // Bulk salvage
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState<Set<number>>(new Set());
+  const [bulkSalvaging, setBulkSalvaging] = useState(false);
+  // Drag-to-flip
+  const isDragging = useRef(false);
+
+  useEffect(() => {
+    function onMouseUp() { isDragging.current = false; }
+    window.addEventListener('mouseup', onMouseUp);
+    return () => window.removeEventListener('mouseup', onMouseUp);
+  }, []);
 
   const fetchCards = async (rarity?: string) => {
     const params = new URLSearchParams();
@@ -205,6 +217,7 @@ export default function CollectionPage() {
       const data = await res.json();
       if (data.success) {
         setListingStatus(`Salvaged for ${data.coins} coins!`);
+        if (data.new_balance !== undefined) window.dispatchEvent(new CustomEvent('coinsUpdated', { detail: { balance: data.new_balance } }));
         setSelectedCard(null); setSalvageConfirm(false);
         fetchCards(selectedRarity); fetchAllCards();
         setTimeout(() => setListingStatus(null), 2500);
@@ -213,6 +226,30 @@ export default function CollectionPage() {
       }
     } catch { setListingStatus('Network error'); }
     setSalvaging(false);
+  };
+
+  const handleBulkSalvage = async () => {
+    if (bulkSelected.size === 0 || bulkSalvaging) return;
+    setBulkSalvaging(true);
+    try {
+      const res = await fetch('/api/collection/salvage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_card_ids: Array.from(bulkSelected) }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setListingStatus(`Salvaged ${data.count} card${data.count !== 1 ? 's' : ''} for ${data.coins} coins!`);
+        if (data.new_balance !== undefined) window.dispatchEvent(new CustomEvent('coinsUpdated', { detail: { balance: data.new_balance } }));
+        setBulkSelected(new Set());
+        setBulkMode(false);
+        fetchCards(selectedRarity); fetchAllCards();
+        setTimeout(() => setListingStatus(null), 2500);
+      } else {
+        setListingStatus(data.error || 'Bulk salvage failed');
+      }
+    } catch { setListingStatus('Network error'); }
+    setBulkSalvaging(false);
   };
 
   if (loading) {
@@ -236,6 +273,11 @@ export default function CollectionPage() {
 
   const rarityCount: Record<string, number> = {};
   allCards.forEach(c => { rarityCount[c.rarity] = (rarityCount[c.rarity] || 0) + 1; });
+
+  const bulkTotalCoins = Array.from(bulkSelected).reduce((sum, ucId) => {
+    const card = cards.find(c => c.user_card_id === ucId);
+    return sum + (card ? (SALVAGE_VALUES[card.rarity] ?? 10) : 0);
+  }, 0);
 
   // Group inventory by pack_type for display
   const inventoryByType = inventory.reduce<Record<string, InventoryPack[]>>((acc, p) => {
@@ -264,6 +306,18 @@ export default function CollectionPage() {
       {/* ---- Cards tab ---- */}
       {activeTab === 'cards' && (
         <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '0.75rem', gap: '0.5rem' }}>
+            {bulkMode && bulkSelected.size > 0 && (
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{bulkSelected.size} selected</span>
+            )}
+            <button
+              className={`btn btn-sm${bulkMode ? ' btn-danger' : ' btn-secondary'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}
+              onClick={() => { setBulkMode(m => !m); setBulkSelected(new Set()); }}
+            >
+              <Layers size={14} /> {bulkMode ? 'Cancel' : 'Bulk Salvage'}
+            </button>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '0.5rem', marginBottom: '1.5rem' }}>
             {RARITIES.map(r => (
               <div
@@ -305,9 +359,30 @@ export default function CollectionPage() {
             </div>
           ) : (
             <div className="card-grid">
-              {cards.map((card, i) => (
-                <TradingCard key={`${card.id}-${i}`} card={card} onClick={() => setSelectedCard(card)} />
-              ))}
+              {cards.map((card, i) => {
+                if (bulkMode) {
+                  const ucId = card.user_card_id!;
+                  const isSelected = bulkSelected.has(ucId);
+                  const canSelect = !card.is_listed;
+                  return (
+                    <div
+                      key={`${card.id}-${i}`}
+                      className={`card-select-wrapper${isSelected ? ' selected' : ''}${!canSelect ? ' unlisted' : ''}`}
+                      onClick={() => {
+                        if (!canSelect) return;
+                        setBulkSelected(prev => {
+                          const next = new Set(prev);
+                          if (next.has(ucId)) next.delete(ucId); else next.add(ucId);
+                          return next;
+                        });
+                      }}
+                    >
+                      <TradingCard card={card} />
+                    </div>
+                  );
+                }
+                return <TradingCard key={`${card.id}-${i}`} card={card} onClick={() => setSelectedCard(card)} />;
+              })}
             </div>
           )}
         </>
@@ -329,13 +404,14 @@ export default function CollectionPage() {
                     : 'All cards revealed!'}
                 </p>
               </div>
-              <div className="pack-reveal" style={{ marginBottom: '2rem' }}>
+              <div className="pack-reveal" style={{ marginBottom: '2rem' }} onMouseDown={() => { isDragging.current = true; }}>
                 {revealCards.map((card, i) => (
                   <div
                     key={card.id}
                     className={`card-flip-wrapper${flippedCards.has(i) ? ' is-flipped' : ''}`}
                     style={{ '--flip-delay': `${i * 0.08}s` } as React.CSSProperties}
                     onClick={() => { if (!flippedCards.has(i)) setFlippedCards(prev => new Set([...prev, i])); }}
+                    onMouseEnter={() => { if (isDragging.current && !flippedCards.has(i)) setFlippedCards(prev => new Set([...prev, i])); }}
                   >
                     <div className="card-flip-inner">
                       <div className="card-back">
@@ -446,6 +522,26 @@ export default function CollectionPage() {
             </>
           )}
         </>
+      )}
+
+      {/* ---- Bulk salvage bar ---- */}
+      {bulkMode && (
+        <div className="bulk-salvage-bar">
+          <span className="bulk-salvage-info">
+            <Layers size={16} />
+            {bulkSelected.size > 0
+              ? `${bulkSelected.size} card${bulkSelected.size !== 1 ? 's' : ''} · ${bulkTotalCoins.toLocaleString()} coins`
+              : 'Select cards to salvage'}
+          </span>
+          <button
+            className="btn bulk-salvage-btn"
+            disabled={bulkSelected.size === 0 || bulkSalvaging}
+            onClick={handleBulkSalvage}
+          >
+            <Flame size={15} />
+            {bulkSalvaging ? 'Salvaging...' : `Salvage for ${bulkTotalCoins.toLocaleString()} Coins`}
+          </button>
+        </div>
       )}
 
       {/* ---- Card detail modal ---- */}

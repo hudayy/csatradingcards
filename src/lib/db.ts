@@ -185,6 +185,7 @@ function initializeSchema(db: Database.Database) {
   if (packsInfo?.sql.includes('CHECK(pack_type IN')) {
     db.pragma('foreign_keys = OFF');
     db.exec(`
+      DROP TABLE IF EXISTS packs_new;
       CREATE TABLE packs_new (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,

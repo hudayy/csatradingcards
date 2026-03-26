@@ -649,13 +649,13 @@ export function grantDailyPrestigePacks(userId: number): boolean {
 }
 
 export const SALVAGE_VALUES: Record<string, number> = {
-  bronze: 10,
-  silver: 16,
-  gold: 22,
-  platinum: 40,
-  diamond: 80,
-  holographic: 267,
-  prismatic: 800,
+  bronze: 0,
+  silver: 5,
+  gold: 12,
+  platinum: 25,
+  diamond: 50,
+  holographic: 100,
+  prismatic: 300,
 };
 
 export function salvageCard(userId: number, userCardId: number): { coins: number; newBalance: number } {

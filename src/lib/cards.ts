@@ -54,7 +54,7 @@ export { PACK_CONFIGS };
 export type { PackType };
 
 export function rollRarityForPack(packType: PackType): Rarity {
-  const allowed = PACK_CONFIGS[packType].allowedRarities;
+  const allowed = PACK_CONFIGS[packType].allowedRarities as Rarity[];
   const total = allowed.reduce((sum, r) => sum + RARITY_DROP_RATES[r], 0);
   const roll = Math.random() * total;
   let cumulative = 0;

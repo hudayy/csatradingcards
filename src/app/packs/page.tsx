@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import TradingCard from '@/components/TradingCard';
 import { Package, FolderOpen, LogIn, Sparkles, Clock, PartyPopper } from 'lucide-react';
 
@@ -27,6 +27,7 @@ export default function PacksPage() {
   const [packsRemaining, setPacksRemaining] = useState<number | null>(null);
   const [isOpening, setIsOpening] = useState(false);
   const [revealedCards, setRevealedCards] = useState<CardData[]>([]);
+  const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -56,6 +57,7 @@ export default function PacksPage() {
 
     setIsOpening(true);
     setRevealedCards([]);
+    setFlippedCards(new Set());
     setError(null);
 
     try {
@@ -191,21 +193,41 @@ export default function PacksPage() {
       ) : (
         <>
           <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-            <h2 style={{
-              fontSize: '1.5rem', fontWeight: 800,
-              fontFamily: 'Orbitron, sans-serif',
-              marginBottom: '0.5rem'
-            }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><PartyPopper size={22} /> Pack Opened!</span>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, fontFamily: 'Orbitron, sans-serif', marginBottom: '0.5rem' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                <PartyPopper size={22} /> Pack Opened!
+              </span>
             </h2>
             <p style={{ color: 'var(--text-secondary)' }}>
-              You received {revealedCards.length} new cards
+              {flippedCards.size < revealedCards.length
+                ? `${revealedCards.length - flippedCards.size} card${revealedCards.length - flippedCards.size !== 1 ? 's' : ''} left to reveal — click to flip`
+                : 'All cards revealed!'}
             </p>
           </div>
 
           <div className="pack-reveal">
-            {revealedCards.map(card => (
-              <TradingCard key={card.id} card={card} />
+            {revealedCards.map((card, i) => (
+              <div
+                key={card.id}
+                className={`card-flip-wrapper${flippedCards.has(i) ? ' is-flipped' : ''}`}
+                style={{ '--flip-delay': `${i * 0.08}s` } as React.CSSProperties}
+                onClick={() => {
+                  if (!flippedCards.has(i)) {
+                    setFlippedCards(prev => new Set([...prev, i]));
+                  }
+                }}
+              >
+                <div className="card-flip-inner">
+                  <div className="card-back">
+                    <img src="/csacardslogo.png" alt="CSA Cards" className="card-back-logo" />
+                    <div className="card-back-label">CSA Cards</div>
+                    <div className="card-back-hint">Click to reveal</div>
+                  </div>
+                  <div className="card-face">
+                    <TradingCard card={card} />
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
 
@@ -214,6 +236,7 @@ export default function PacksPage() {
               className="btn btn-primary"
               onClick={() => {
                 setRevealedCards([]);
+                setFlippedCards(new Set());
                 if (devMode || (packsRemaining && packsRemaining > 0)) {
                   openPack();
                 }

@@ -15,7 +15,7 @@ interface CardData {
   id: string; player_name: string; player_avatar_url: string | null;
   franchise_name: string | null; franchise_abbr: string | null; franchise_logo_url?: string | null;
   franchise_color?: string | null; franchise_conf?: string | null;
-  tier_name: string | null; tier_abbr: string | null; rarity: string;
+  tier_name: string | null; tier_abbr: string | null; rarity: string; card_type?: string;
   stat_gpg: number; stat_apg: number; stat_svpg: number; stat_win_pct: number;
   salary: number; overall_rating: number; season_number: number; user_card_id?: number;
 }

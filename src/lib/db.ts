@@ -56,6 +56,7 @@ function initializeSchema(db: Database.Database) {
       tier_name TEXT,
       tier_abbr TEXT,
       rarity TEXT NOT NULL CHECK(rarity IN ('bronze','silver','gold','platinum','diamond','holographic','prismatic')),
+      card_type TEXT NOT NULL DEFAULT 'player',
       stat_gpg REAL NOT NULL DEFAULT 0,
       stat_apg REAL NOT NULL DEFAULT 0,
       stat_svpg REAL NOT NULL DEFAULT 0,
@@ -164,6 +165,7 @@ function initializeSchema(db: Database.Database) {
     'ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE users ADD COLUMN last_daily_bonus DATE',
     'ALTER TABLE users ADD COLUMN last_prestige_grant DATE',
+    "ALTER TABLE cards ADD COLUMN card_type TEXT NOT NULL DEFAULT 'player'",
   ]) {
     try { db.exec(col); } catch { /* already exists */ }
   }
@@ -311,6 +313,7 @@ export interface Card {
   tier_name: string | null;
   tier_abbr: string | null;
   rarity: string;
+  card_type: string;
   stat_gpg: number;
   stat_apg: number;
   stat_svpg: number;
@@ -336,14 +339,15 @@ export function insertCard(card: Omit<Card, 'created_at'>): void {
   getDb().prepare(`
     INSERT OR IGNORE INTO cards (id, player_csa_id, player_name, player_discord_id, player_avatar_url,
       season_id, season_number, franchise_id, franchise_name, franchise_abbr, franchise_color,
-      franchise_logo_url, franchise_conf, tier_name, tier_abbr, rarity,
+      franchise_logo_url, franchise_conf, tier_name, tier_abbr, rarity, card_type,
       stat_gpg, stat_apg, stat_svpg, stat_win_pct, salary, overall_rating)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     card.id, card.player_csa_id, card.player_name, card.player_discord_id, card.player_avatar_url,
     card.season_id, card.season_number, card.franchise_id, card.franchise_name, card.franchise_abbr,
     card.franchise_color, card.franchise_logo_url, card.franchise_conf, card.tier_name, card.tier_abbr,
-    card.rarity, card.stat_gpg, card.stat_apg, card.stat_svpg, card.stat_win_pct, card.salary, card.overall_rating
+    card.rarity, card.card_type ?? 'player',
+    card.stat_gpg, card.stat_apg, card.stat_svpg, card.stat_win_pct, card.salary, card.overall_rating
   );
 }
 
@@ -376,7 +380,7 @@ export function getUserCards(userId: number, filters?: {
       c.id, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
       c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
-      c.rarity, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
+      c.rarity, c.card_type, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
     FROM user_cards uc
     JOIN cards c ON uc.card_id = c.id
     WHERE uc.user_id = ?
@@ -484,7 +488,7 @@ export function getActiveListings(filters?: {
     SELECT ml.*, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
       c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
-      c.rarity, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at,
+      c.rarity, c.card_type, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at,
       u.discord_username as seller_name, u.avatar_url as seller_avatar
     FROM marketplace_listings ml
     JOIN cards c ON ml.card_id = c.id
@@ -961,7 +965,7 @@ export function getUserPublicCards(userId: number): UserCardWithDetails[] {
       c.id, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
       c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
-      c.rarity, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
+      c.rarity, c.card_type, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
     FROM user_cards uc
     JOIN cards c ON uc.card_id = c.id
     WHERE uc.user_id = ? AND uc.is_listed = 0

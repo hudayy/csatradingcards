@@ -58,14 +58,16 @@ export async function GET(req: NextRequest) {
       csaMember?.csa_name
     );
 
-    // Grant starter bronze card for CSA players — fire-and-forget, never blocks login
+    // Grant starter card for CSA players — fire-and-forget, never blocks login
     if (csaMember?.csa_id) {
       const userId = user.id;
       const csaId = csaMember.csa_id;
       void (async () => {
         try {
-          const { getPlayerPool, generateCard } = await import('@/lib/cards');
+          const { getPlayerPool, generateCard, getGMPool, generateGMCard } = await import('@/lib/cards');
           const { hasUserCard, addCardToUser } = await import('@/lib/db');
+
+          // Grant player starter card if they are a league player
           const pool = await getPlayerPool();
           const entry = pool.find(e => e.player.Player.csa_id === csaId);
           if (entry) {
@@ -74,6 +76,16 @@ export async function GET(req: NextRequest) {
             const card = await generateCard(entry, starterRarity);
             if (!hasUserCard(userId, card.id)) {
               addCardToUser(userId, card.id, 'reward');
+            }
+          }
+
+          // Grant GM card if this user is a GM of any franchise
+          const gmPool = await getGMPool();
+          const gmEntry = gmPool.find(g => g.gm_csa_id === csaId);
+          if (gmEntry) {
+            const gmCard = generateGMCard(gmEntry);
+            if (!hasUserCard(userId, gmCard.id)) {
+              addCardToUser(userId, gmCard.id, 'reward');
             }
           }
         } catch { /* ignore */ }

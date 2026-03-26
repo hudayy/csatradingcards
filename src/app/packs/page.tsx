@@ -13,6 +13,7 @@ interface CardData {
   tier_name: string | null;
   tier_abbr: string | null;
   rarity: string;
+  card_type?: string;
   stat_gpg: number;
   stat_apg: number;
   stat_svpg: number;

@@ -240,6 +240,7 @@ export async function generateCard(
     tier_name: player.tier || null,
     tier_abbr: player.tier || null,
     rarity,
+    card_type: 'player',
     stat_gpg: cardStats.gpg,
     stat_apg: cardStats.apg,
     stat_svpg: cardStats.svpg,
@@ -254,43 +255,104 @@ export async function generateCard(
   return card;
 }
 
+export function generateGMCard(gmData: GMCardData): Omit<Card, 'created_at'> {
+  const card: Omit<Card, 'created_at'> = {
+    id: gmData.id,
+    player_csa_id: gmData.gm_csa_id,
+    player_name: gmData.player_name,
+    player_discord_id: null,
+    player_avatar_url: gmData.player_avatar_url,
+    season_id: gmData.season_id,
+    season_number: gmData.season_number,
+    franchise_id: gmData.franchise_id,
+    franchise_name: gmData.franchise_name,
+    franchise_abbr: gmData.franchise_abbr,
+    franchise_color: gmData.franchise_color,
+    franchise_logo_url: gmData.franchise_logo_url,
+    franchise_conf: gmData.franchise_conf,
+    tier_name: null,
+    tier_abbr: null,
+    rarity: 'prismatic',
+    card_type: 'gm',
+    stat_gpg: 0,
+    stat_apg: 0,
+    stat_svpg: 0,
+    stat_win_pct: 0,
+    salary: 0,
+    overall_rating: 99,
+  };
+  insertCard(card);
+  return card;
+}
+
 export async function generatePackCards(count: number = 5, packType: PackType = 'standard'): Promise<Omit<Card, 'created_at'>[]> {
-  const pool = await getPlayerPool();
+  const [pool, gmPool] = await Promise.all([getPlayerPool(), getGMPool()]);
   if (pool.length === 0) throw new Error('No players available for card generation');
 
   const wcPool = pool.filter(e => e.player.tier?.toLowerCase().replace(/[\s_]+/g, '') === 'worldclass');
   const normalPool = pool.filter(e => e.player.tier?.toLowerCase().replace(/[\s_]+/g, '') !== 'worldclass');
-  // Fallback: if no normal players, use full pool without WC forcing
-  const pickablePool = normalPool.length > 0 ? normalPool : pool;
 
   const cards: Omit<Card, 'created_at'>[] = [];
-  const usedPlayers = new Set<number>();
+  const usedPlayerIds = new Set<number>();
+  const usedGMIds = new Set<string>();
 
-  function pickFrom(src: PlayerPool[]): PlayerPool {
+  function pickPlayer(src: PlayerPool[]): PlayerPool {
     let entry: PlayerPool;
     let attempts = 0;
     do {
       entry = src[Math.floor(Math.random() * src.length)];
       attempts++;
-    } while (usedPlayers.has(entry.player.Player.csa_id) && attempts < 50);
+    } while (usedPlayerIds.has(entry.player.Player.csa_id) && attempts < 50);
     return entry;
   }
 
+  function pickGM(src: GMCardData[]): GMCardData {
+    let entry: GMCardData;
+    let attempts = 0;
+    do {
+      entry = src[Math.floor(Math.random() * src.length)];
+      attempts++;
+    } while (usedGMIds.has(entry.id) && attempts < 50);
+    return entry;
+  }
+
+  const season = await import('./csa-api').then(m => m.getCurrentSeason());
+  const seasonOverride = season ? { id: season.id, number: season.number } : undefined;
+
   for (let i = 0; i < count; i++) {
     const rarity = rollRarityForPack(packType);
-    const topRarity = PACK_CONFIGS[packType].allowedRarities[PACK_CONFIGS[packType].allowedRarities.length - 1];
 
-    let entry: PlayerPool;
-    if (rarity === topRarity && wcPool.length > 0) {
-      entry = pickFrom(wcPool);
+    if (rarity === 'prismatic') {
+      // Prismatic: eligible pool = WC players + GMs (fallback to all players if both empty)
+      const hasPrismaticSpecial = wcPool.length > 0 || gmPool.length > 0;
+
+      if (hasPrismaticSpecial) {
+        // Weighted pick: WC players vs GMs
+        const totalOptions = wcPool.length + gmPool.length;
+        const roll = Math.floor(Math.random() * totalOptions);
+
+        if (roll < wcPool.length) {
+          const entry = pickPlayer(wcPool);
+          usedPlayerIds.add(entry.player.Player.csa_id);
+          cards.push(await generateCard(entry, 'prismatic', seasonOverride));
+        } else {
+          const entry = pickGM(gmPool);
+          usedGMIds.add(entry.id);
+          cards.push(generateGMCard(entry));
+        }
+      } else {
+        // Fallback: pick from all players at prismatic
+        const entry = pickPlayer(normalPool.length > 0 ? normalPool : pool);
+        usedPlayerIds.add(entry.player.Player.csa_id);
+        cards.push(await generateCard(entry, 'prismatic', seasonOverride));
+      }
     } else {
-      entry = pickFrom(pickablePool);
+      // Non-prismatic: regular players only (no WC, no GMs)
+      const pickablePool = normalPool.length > 0 ? normalPool : pool;
+      const entry = pickPlayer(pickablePool);
+      usedPlayerIds.add(entry.player.Player.csa_id);
+      cards.push(await generateCard(entry, rarity, seasonOverride));
     }
-
-    usedPlayers.add(entry.player.Player.csa_id);
-
-    const card = await generateCard(entry, rarity);
-    cards.push(card);
   }
 
   // Sort by rarity (best last for reveal)
@@ -304,6 +366,7 @@ export async function generatePackCards(count: number = 5, packType: PackType = 
 export interface GMCardData {
   id: string;
   card_type: 'gm';
+  gm_csa_id: number;
   player_name: string;
   player_avatar_url: string | null;
   franchise_id: number;
@@ -322,6 +385,7 @@ export interface GMCardData {
   salary: number;
   overall_rating: number;
   season_number: number;
+  season_id: number;
 }
 
 let cachedGMPool: GMCardData[] | null = null;
@@ -355,6 +419,7 @@ export async function getGMPool(): Promise<GMCardData[]> {
     gmCards.push({
       id: `gm-${franchise.id}-s${season?.number ?? 1}`,
       card_type: 'gm',
+      gm_csa_id: gm.csa_id,
       player_name: gm.csa_name,
       player_avatar_url: member?.avatar_url ?? null,
       franchise_id: franchise.id,
@@ -373,6 +438,7 @@ export async function getGMPool(): Promise<GMCardData[]> {
       salary: 0,
       overall_rating: 99,
       season_number: season?.number ?? 1,
+      season_id: season?.id ?? 1,
     });
   }
 

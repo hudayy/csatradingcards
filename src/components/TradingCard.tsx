@@ -124,7 +124,11 @@ export default function TradingCard({ card, onClick, showPrice, size = 'normal' 
       >
         <div
           className="trading-card-glow-bg"
-          style={color ? { background: `radial-gradient(ellipse at 50% 50%, ${color}bb, transparent 70%)`, opacity: 1 } : undefined}
+          style={color ? {
+            background: `radial-gradient(ellipse at 50% 50%, ${color}cc, transparent 70%)`,
+            boxShadow: `0 0 30px ${color}bb, 0 0 60px ${color}66`,
+            opacity: 1,
+          } : undefined}
         />
 
         <div className="trading-card-inner gm-card-inner">

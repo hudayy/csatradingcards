@@ -114,5 +114,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ users: searchUsers(query || '') });
   }
 
+  if (action === 'backfill_gm_cards') {
+    const { getGMPool, generateGMCard } = await import('@/lib/cards');
+    const { getAllUsers, hasUserCard, addCardToUser } = await import('@/lib/db');
+    const gmPool = await getGMPool();
+    const allUsers = getAllUsers(undefined, 10000);
+    let granted = 0;
+    for (const u of allUsers) {
+      if (!u.csa_id) continue;
+      const gmEntry = gmPool.find(g => g.gm_csa_id === u.csa_id);
+      if (!gmEntry) continue;
+      const gmCard = generateGMCard(gmEntry);
+      if (!hasUserCard(u.id, gmCard.id)) {
+        addCardToUser(u.id, gmCard.id, 'reward');
+        granted++;
+      }
+    }
+    return NextResponse.json({ success: true, granted });
+  }
+
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }

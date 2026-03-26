@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Coins, Package, FolderOpen, ShoppingBag, Zap, Crown, Gem, ChevronLeft, LogIn } from 'lucide-react';
 import TradingCard from '@/components/TradingCard';
-import { PACK_CONFIGS, type PackType, RARITY_ORDER } from '@/lib/cards';
+import { PACK_CONFIGS, type PackType } from '@/lib/pack-config';
 
 const RARITY_COLORS: Record<string, string> = {
   bronze: '#cd7f32', silver: '#c0c0c0', gold: '#ffd700',

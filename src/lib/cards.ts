@@ -48,37 +48,10 @@ export const RARITY_LABELS: Record<Rarity, string> = {
   prismatic: 'Prismatic',
 };
 
-export type PackType = 'standard' | 'elite' | 'apex';
-
-export const PACK_CONFIGS: Record<PackType, {
-  name: string;
-  subtitle: string;
-  flavour: string;
-  cost: number;
-  allowedRarities: Rarity[];
-}> = {
-  standard: {
-    name: 'Challenger Pack',
-    subtitle: 'All Rarities',
-    flavour: 'Build your roster. Every rarity in the game.',
-    cost: 100,
-    allowedRarities: [...RARITY_ORDER],
-  },
-  elite: {
-    name: 'Elite Pack',
-    subtitle: 'Silver & Above',
-    flavour: 'No commons. No compromises.',
-    cost: 500,
-    allowedRarities: ['silver', 'gold', 'platinum', 'diamond', 'holographic', 'prismatic'],
-  },
-  apex: {
-    name: 'Apex Pack',
-    subtitle: 'Diamond & Above',
-    flavour: 'Only the rarest survive.',
-    cost: 2000,
-    allowedRarities: ['diamond', 'holographic', 'prismatic'],
-  },
-};
+import { PACK_CONFIGS } from './pack-config';
+import type { PackType } from './pack-config';
+export { PACK_CONFIGS };
+export type { PackType };
 
 export function rollRarityForPack(packType: PackType): Rarity {
   const allowed = PACK_CONFIGS[packType].allowedRarities;

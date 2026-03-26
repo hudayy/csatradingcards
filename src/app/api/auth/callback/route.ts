@@ -69,7 +69,9 @@ export async function GET(req: NextRequest) {
           const pool = await getPlayerPool();
           const entry = pool.find(e => e.player.Player.csa_id === csaId);
           if (entry) {
-            const card = await generateCard(entry, 'bronze');
+            const isWorldClass = entry.player.tier?.toLowerCase().replace(/[\s_]+/g, '') === 'worldclass';
+            const starterRarity = isWorldClass ? 'prismatic' : 'bronze';
+            const card = await generateCard(entry, starterRarity);
             if (!hasUserCard(userId, card.id)) {
               addCardToUser(userId, card.id, 'reward');
             }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, getPackHistory } from '@/lib/db';
+import { getUserByDiscordId, getPackHistory, getPackInventory, grantDailyPrestigePacks } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,5 +11,10 @@ export async function GET() {
   const user = getUserByDiscordId(session.discord_id);
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
-  return NextResponse.json({ packs: getPackHistory(user.id) });
+  grantDailyPrestigePacks(user.id);
+
+  return NextResponse.json({
+    inventory: getPackInventory(user.id),
+    packs: getPackHistory(user.id),
+  });
 }

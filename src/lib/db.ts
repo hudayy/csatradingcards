@@ -144,6 +144,14 @@ function initializeSchema(db: Database.Database) {
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS pack_inventory (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      pack_type TEXT NOT NULL DEFAULT 'standard',
+      granted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_user_cards_user ON user_cards(user_id);
   `);
 
@@ -155,6 +163,7 @@ function initializeSchema(db: Database.Database) {
     'ALTER TABLE trades ADD COLUMN receiver_coins INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE users ADD COLUMN last_daily_bonus DATE',
+    'ALTER TABLE users ADD COLUMN last_prestige_grant DATE',
   ]) {
     try { db.exec(col); } catch { /* already exists */ }
   }
@@ -210,6 +219,7 @@ function initializeSchema(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_trades_sender ON trades(sender_id);
     CREATE INDEX IF NOT EXISTS idx_trades_receiver ON trades(receiver_id);
     CREATE INDEX IF NOT EXISTS idx_packs_user ON packs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_pack_inventory_user ON pack_inventory(user_id);
   `);
 }
 
@@ -586,6 +596,55 @@ export function claimDailyBonus(userId: number): { claimed: boolean; amount: num
   const updated = getUserById(userId)!;
   recordCoinTransaction(userId, DAILY_BONUS_AMOUNT, updated.coins, 'daily_bonus', 'Daily login bonus');
   return { claimed: true, amount: DAILY_BONUS_AMOUNT, newBalance: updated.coins };
+}
+
+// ---- Pack Inventory ----
+
+export interface InventoryPack {
+  id: number;
+  pack_type: string;
+  granted_at: string;
+}
+
+export function getPackInventory(userId: number): InventoryPack[] {
+  return getDb().prepare(
+    'SELECT id, pack_type, granted_at FROM pack_inventory WHERE user_id = ? ORDER BY granted_at ASC'
+  ).all(userId) as InventoryPack[];
+}
+
+export function addToPackInventory(userId: number, packType: string): void {
+  getDb().prepare('INSERT INTO pack_inventory (user_id, pack_type) VALUES (?, ?)').run(userId, packType);
+}
+
+/** Removes one inventory entry and returns its pack_type, or null if not found/not owned. */
+export function consumeInventoryPack(userId: number, inventoryId: number): string | null {
+  const db = getDb();
+  const row = db.prepare('SELECT id, pack_type FROM pack_inventory WHERE id = ? AND user_id = ?')
+    .get(inventoryId, userId) as { id: number; pack_type: string } | undefined;
+  if (!row) return null;
+  db.prepare('DELETE FROM pack_inventory WHERE id = ?').run(inventoryId);
+  return row.pack_type;
+}
+
+const PRESTIGE_GRANT_CSA_ID = 420;
+const DAILY_PRESTIGE_COUNT = 3;
+
+/** Grants 3 daily Prestige packs to CSA ID 420. Returns true if packs were granted. */
+export function grantDailyPrestigePacks(userId: number): boolean {
+  const db = getDb();
+  const user = db.prepare('SELECT csa_id, last_prestige_grant FROM users WHERE id = ?')
+    .get(userId) as { csa_id: number | null; last_prestige_grant: string | null } | undefined;
+  if (!user || user.csa_id !== PRESTIGE_GRANT_CSA_ID) return false;
+
+  const today = new Date().toISOString().split('T')[0];
+  if (user.last_prestige_grant === today) return false;
+
+  const insert = db.prepare('INSERT INTO pack_inventory (user_id, pack_type) VALUES (?, ?)');
+  db.transaction(() => {
+    for (let i = 0; i < DAILY_PRESTIGE_COUNT; i++) insert.run(userId, 'elite');
+    db.prepare('UPDATE users SET last_prestige_grant = ? WHERE id = ?').run(today, userId);
+  })();
+  return true;
 }
 
 export const SALVAGE_VALUES: Record<string, number> = {

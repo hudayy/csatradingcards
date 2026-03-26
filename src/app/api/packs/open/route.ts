@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, getUserById, getPacksOpenedToday, incrementPacksOpened, createPack, addCardToUser, addCardToPack, isAdmin, updateCoins, recordCoinTransaction } from '@/lib/db';
+import { getUserByDiscordId, getUserById, getPacksOpenedToday, incrementPacksOpened, createPack, addCardToUser, addCardToPack, isAdmin, updateCoins, recordCoinTransaction, consumeInventoryPack } from '@/lib/db';
 import { generatePackCards, PACK_CONFIGS, type PackType } from '@/lib/cards';
 
 const DAILY_FREE_PACKS = parseInt(process.env.DAILY_FREE_PACKS || '3', 10);
@@ -14,7 +14,30 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
   const isDevMode = request.nextUrl.searchParams.get('dev') === '1' && isAdmin(user);
-  const body = await request.json().catch(() => ({})) as { pack_type?: string; paid?: boolean };
+  const body = await request.json().catch(() => ({})) as { pack_type?: string; paid?: boolean; inventory_id?: number };
+
+  // --- Inventory pack ---
+  if (body.inventory_id != null) {
+    const packType = consumeInventoryPack(user.id, body.inventory_id);
+    if (!packType) return NextResponse.json({ error: 'Pack not found in your inventory' }, { status: 404 });
+
+    try {
+      const cards = await generatePackCards(CARDS_PER_PACK, packType as PackType);
+      const packId = createPack(user.id, packType);
+      const userCards = cards.map(card => {
+        const userCardId = addCardToUser(user.id, card.id, 'pack');
+        addCardToPack(packId, card.id, userCardId);
+        return { ...card, user_card_id: userCardId };
+      });
+      const updatedUser = getUserById(user.id)!;
+      return NextResponse.json({ pack_id: packId, cards: userCards, new_balance: updatedUser.coins });
+    } catch (error) {
+      console.error('Pack opening error:', error);
+      return NextResponse.json({ error: 'Failed to generate pack. The CSA API may be temporarily unavailable.' }, { status: 500 });
+    }
+  }
+
+  // --- Paid or free pack ---
   const packType = (body.pack_type as PackType) || 'standard';
   const isPaid = body.paid === true;
 

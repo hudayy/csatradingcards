@@ -1789,6 +1789,61 @@ body {
   cursor: default;
 }
 
+/* ===== PACK INVENTORY ===== */
+
+.inv-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-gold);
+  color: #000;
+  font-size: 0.65rem;
+  font-weight: 800;
+  border-radius: 999px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 6px;
+  line-height: 1;
+}
+
+.inv-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.inv-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  transition: border-color 0.2s;
+}
+
+.inv-card-standard { border-color: rgba(59,130,246,0.2); }
+.inv-card-standard:hover { border-color: rgba(59,130,246,0.5); }
+.inv-card-elite    { border-color: rgba(251,191,36,0.2); }
+.inv-card-elite:hover    { border-color: rgba(251,191,36,0.5); }
+.inv-card-apex     { border-color: rgba(139,92,246,0.2); }
+.inv-card-apex:hover     { border-color: rgba(139,92,246,0.5); }
+
+.inv-open-btn {
+  flex-shrink: 0;
+  padding: 0.55rem 1.25rem;
+  font-size: 0.875rem;
+}
+
+.inv-open-standard { background: linear-gradient(135deg, #1d4ed8, #3b82f6); color: #fff; }
+.inv-open-elite    { background: linear-gradient(135deg, #92400e, #d97706, #fbbf24); color: #000; }
+.inv-open-apex     { background: linear-gradient(135deg, #4c1d95, #7c3aed); color: #fff; }
+
+.inv-open-btn:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
+.inv-open-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
 /* ================================================================
    MOBILE NAV DRAWER (always in DOM, shown only on mobile)
    ================================================================ */

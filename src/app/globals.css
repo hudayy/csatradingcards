@@ -840,9 +840,8 @@ body {
 
 /* ---- GM Cards ---- */
 
-/* Override default dark inner shadow so franchise color shows through */
+/* Keep inner background transparent so franchise gradient shows through */
 .gm-card-inner {
-  box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.45) !important;
   background: transparent !important;
 }
 

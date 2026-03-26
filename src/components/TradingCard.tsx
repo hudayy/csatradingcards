@@ -114,18 +114,15 @@ export default function TradingCard({ card, onClick, showPrice, size = 'normal' 
     const gmBg = color
       ? `linear-gradient(160deg, ${color} 0%, ${darkenHex(color, 0.55)} 100%)`
       : 'linear-gradient(160deg, #334155 0%, #0f172a 100%)';
-    const gmGlow = color
-      ? `radial-gradient(ellipse at 50% -10%, ${color}cc, transparent 65%)`
-      : undefined;
 
     return (
       <div
         ref={cardRef}
-        className={`trading-card gm-card ${sizeClass} ${isHovered ? 'is-hovered' : ''}`}
+        className={`trading-card gm-card rarity-prismatic ${sizeClass} ${isHovered ? 'is-hovered' : ''}`}
         style={{ background: gmBg, ...(size === 'small' ? { width: 180, height: 280 } : {}) }}
         {...sharedHandlers}
       >
-        <div className="trading-card-glow-bg" style={gmGlow ? { background: gmGlow, opacity: 1 } : undefined} />
+        <div className="trading-card-glow-bg" />
 
         <div className="trading-card-inner gm-card-inner">
           <div className="card-glare" />

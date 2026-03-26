@@ -955,6 +955,14 @@ body {
   -webkit-backface-visibility: hidden;
 }
 
+/* Disable pointer events on whichever face is currently hidden */
+.card-flip-wrapper:not(.is-flipped) .card-face {
+  pointer-events: none;
+}
+.card-flip-wrapper.is-flipped .card-back {
+  pointer-events: none;
+}
+
 /* Back: shown by default (front of the unflipped card) */
 .card-back {
   border-radius: var(--radius-lg);

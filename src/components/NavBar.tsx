@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Coins, LogIn, User, LogOut } from 'lucide-react';
+import { Coins, LogIn, User, LogOut, Menu, X } from 'lucide-react';
 
 interface UserInfo {
   id: number;
@@ -17,9 +17,15 @@ interface UserInfo {
 export default function NavBar() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [bonusToast, setBonusToast] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+
+  // Close mobile nav on route change
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -54,6 +60,7 @@ export default function NavBar() {
 
   const handleLogout = async () => {
     setMenuOpen(false);
+    setMobileNavOpen(false);
     await fetch('/api/auth/me', { method: 'DELETE' });
     setUser(null);
     window.location.href = '/';
@@ -128,11 +135,52 @@ export default function NavBar() {
           </>
         ) : (
           <a href="/api/auth/discord" className="login-btn">
-            <LogIn size={16} /> Login with Discord
+            <LogIn size={16} /> <span className="login-btn-text">Login with Discord</span>
           </a>
         )}
+        <button
+          className="mobile-nav-toggle"
+          onClick={() => setMobileNavOpen(o => !o)}
+          aria-label="Toggle navigation"
+        >
+          {mobileNavOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
       </div>
     </nav>
+
+    {mobileNavOpen && (
+      <div className="mobile-nav-drawer">
+        <ul className="mobile-nav-links">
+          {links.map(link => (
+            <li key={link.href}>
+              <Link
+                href={link.href}
+                className={pathname === link.href ? 'active' : ''}
+                onClick={() => setMobileNavOpen(false)}
+              >
+                {link.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+        <div className="mobile-nav-footer">
+          {user ? (
+            <>
+              <div className="mobile-nav-coins">
+                <Coins size={14} /> {user.coins.toLocaleString()} coins
+              </div>
+              <button className="mobile-nav-logout" onClick={handleLogout}>
+                <LogOut size={14} /> Log out
+              </button>
+            </>
+          ) : (
+            <a href="/api/auth/discord" className="mobile-nav-login">
+              <LogIn size={14} /> Login with Discord
+            </a>
+          )}
+        </div>
+      </div>
+    )}
     </>
   );
 }

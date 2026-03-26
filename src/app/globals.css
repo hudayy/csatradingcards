@@ -1788,3 +1788,192 @@ body {
   border: 1.5px solid rgba(255,255,255,0.12);
   cursor: default;
 }
+
+/* ================================================================
+   MOBILE NAV DRAWER (always in DOM, shown only on mobile)
+   ================================================================ */
+
+.mobile-nav-drawer {
+  display: none;
+}
+
+.mobile-nav-links {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-nav-links a {
+  display: flex;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  text-decoration: none;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 1rem;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+}
+
+.mobile-nav-links a:hover { background: var(--bg-glass); color: var(--text-primary); }
+.mobile-nav-links a.active { color: var(--accent-gold); background: var(--accent-gold-dim); }
+
+.mobile-nav-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem 0.25rem;
+  border-top: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+
+.mobile-nav-coins {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--accent-gold);
+  font-weight: 700;
+  font-size: 0.9rem;
+  flex: 1;
+}
+
+.mobile-nav-logout {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  color: #ef4444;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+}
+
+.mobile-nav-logout:hover { background: rgba(239,68,68,0.1); }
+
+.mobile-nav-login {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: var(--accent-gold);
+  font-weight: 700;
+  font-size: 0.9rem;
+  padding: 0.35rem 0;
+}
+
+@keyframes mobileNavSlideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ================================================================
+   COMPREHENSIVE MOBILE STYLES  (≤ 768px)
+   ================================================================ */
+@media (max-width: 768px) {
+
+  /* ---- Nav ---- */
+  .nav { padding: 0 1rem; }
+  .nav-links { display: none; }
+  .nav-coins { display: none; }
+  .mobile-nav-toggle { display: flex; align-items: center; justify-content: center; }
+  .login-btn-text { display: none; }
+
+  .mobile-nav-drawer {
+    display: block;
+    position: fixed;
+    top: 64px;
+    left: 0; right: 0;
+    background: rgba(8, 8, 24, 0.97);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border-subtle);
+    z-index: 999;
+    padding: 0.5rem 0.75rem 0.75rem;
+    animation: mobileNavSlideDown 0.2s ease;
+    max-height: calc(100vh - 64px);
+    overflow-y: auto;
+  }
+
+  /* ---- Layout ---- */
+  .container { padding: 1rem; }
+  .page-title { font-size: 1.5rem; }
+  .page-subtitle { font-size: 0.9rem; }
+
+  /* ---- Hero ---- */
+  .hero { padding: 3rem 1rem; }
+  .hero-title { font-size: 2rem; letter-spacing: -1px; }
+  .hero-subtitle { font-size: 0.95rem; margin-bottom: 1.5rem; }
+  .hero-cta { flex-direction: column; align-items: center; gap: 0.75rem; }
+
+  /* ---- Cards ---- */
+  .trading-card { width: 160px; }
+  .card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1rem;
+  }
+
+  /* ---- Pack flip wrapper — match 160px card size ---- */
+  .card-flip-wrapper {
+    width: 160px;
+    height: 246px;
+  }
+  .card-back-logo { width: 90px; height: 90px; }
+  .card-back-label { font-size: 0.8rem; }
+  .card-back-hint { font-size: 0.65rem; }
+
+  .pack-reveal { gap: 0.75rem; }
+
+  /* ---- Filters ---- */
+  .filters { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 0.5rem; -webkit-overflow-scrolling: touch; }
+
+  /* ---- Stats grid ---- */
+  .stats-grid { grid-template-columns: 1fr 1fr; }
+
+  /* ---- Featured cards ---- */
+  .featured-cards { flex-direction: column; align-items: center; gap: 2rem; }
+
+  /* ---- Shop ---- */
+  .shop-grid { gap: 1rem; }
+  .shop-card { width: 100%; max-width: 340px; padding: 1.5rem 1.25rem 1.25rem; }
+  .pv { width: 148px; height: 245px; }
+  .pv-brand { font-size: 1.6rem; }
+
+  /* ---- Pack history ---- */
+  .pack-hist-summary { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+
+  /* ---- Collection tabs ---- */
+  .collection-tabs { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* ---- Search ---- */
+  .search-input { max-width: 100%; }
+
+  /* ---- Modal ---- */
+  .modal { padding: 1.25rem; }
+  .modal-actions { flex-wrap: wrap; gap: 0.5rem; }
+  .modal-actions .btn { flex: 1; min-width: 120px; justify-content: center; }
+
+  /* ---- Buttons ---- */
+  .btn { padding: 0.7rem 1.25rem; font-size: 0.85rem; }
+  .login-btn { padding: 0.45rem 0.75rem; }
+
+  /* ---- Daily bonus toast ---- */
+  .daily-bonus-toast { right: 0.75rem; font-size: 0.875rem; padding: 8px 14px; }
+}
+
+/* ================================================================
+   VERY SMALL PHONES  (≤ 400px)
+   ================================================================ */
+@media (max-width: 400px) {
+  .card-flip-wrapper { width: 140px; height: 215px; }
+  .trading-card { width: 140px; }
+  .card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .pack-hist-summary { grid-template-columns: 1fr; }
+  .shop-card { padding: 1.25rem 1rem 1rem; }
+  .pv { width: 130px; height: 215px; }
+  .pv-brand { font-size: 1.35rem; }
+}

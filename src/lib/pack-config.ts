@@ -17,7 +17,7 @@ export const PACK_CONFIGS: Record<PackType, {
     allowedRarities: ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'holographic', 'prismatic'],
   },
   elite: {
-    name: 'Elite Pack',
+    name: 'Prestige Pack',
     subtitle: 'Silver & Above',
     flavour: 'No commons. No compromises.',
     cost: 500,

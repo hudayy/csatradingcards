@@ -45,7 +45,7 @@ const RARITY_COLORS_HEX: Record<string, string> = {
 
 const PACK_DISPLAY: Record<string, { name: string; emoji: string; cls: string }> = {
   standard: { name: 'Challenger Pack', emoji: '⚡', cls: 'standard' },
-  elite: { name: 'Elite Pack', emoji: '👑', cls: 'elite' },
+  elite: { name: 'Prestige Pack', emoji: '👑', cls: 'elite' },
   apex: { name: 'Apex Pack', emoji: '💎', cls: 'apex' },
 };
 

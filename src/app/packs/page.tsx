@@ -31,6 +31,7 @@ export default function PacksPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [csaId, setCsaId] = useState<number | null>(null);
+  const [isUserAdmin, setIsUserAdmin] = useState(false);
   const [devMode, setDevMode] = useState(false);
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function PacksPage() {
       if (authData.user) {
         setIsLoggedIn(true);
         setCsaId(authData.user.csa_id ?? null);
+        setIsUserAdmin(!!authData.user.is_admin);
         if (packData.packs_remaining !== undefined) {
           setPacksRemaining(packData.packs_remaining);
         }
@@ -158,7 +160,7 @@ export default function PacksPage() {
             )}
           </div>
 
-          {csaId === 121 && (
+          {isUserAdmin && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                 <input

@@ -11,6 +11,7 @@ interface UserInfo {
   avatar_url: string | null;
   csa_name: string | null;
   coins: number;
+  is_admin: boolean;
 }
 
 export default function NavBar() {
@@ -39,6 +40,7 @@ export default function NavBar() {
     { href: '/collection/binders', label: 'Binders' },
     { href: '/marketplace', label: 'Marketplace' },
     { href: '/trades', label: 'Trades' },
+    ...(user?.is_admin ? [{ href: '/admin', label: 'Admin' }] : []),
   ];
 
   return (

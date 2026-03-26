@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, getPacksOpenedToday, incrementPacksOpened, createPack, addCardToUser, addCardToPack } from '@/lib/db';
+import { getUserByDiscordId, getPacksOpenedToday, incrementPacksOpened, createPack, addCardToUser, addCardToPack, isAdmin } from '@/lib/db';
 import { generatePackCards } from '@/lib/cards';
 
 const DAILY_FREE_PACKS = parseInt(process.env.DAILY_FREE_PACKS || '3', 10);
@@ -17,8 +17,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  // Dev mode: bypass daily limit for CSA ID 121
-  const isDevMode = request.nextUrl.searchParams.get('dev') === '1' && user.csa_id === 121;
+  // Dev/admin mode: bypass daily limit for admins
+  const isDevMode = request.nextUrl.searchParams.get('dev') === '1' && isAdmin(user);
 
   // Check daily limit (skipped in dev mode)
   const packsToday = isDevMode ? 0 : getPacksOpenedToday(user.id);

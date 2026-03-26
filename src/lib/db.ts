@@ -34,6 +34,7 @@ function initializeSchema(db: Database.Database) {
       coins INTEGER NOT NULL DEFAULT 500,
       packs_opened_today INTEGER NOT NULL DEFAULT 0,
       last_pack_date TEXT,
+      is_admin INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       last_login DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -152,6 +153,7 @@ function initializeSchema(db: Database.Database) {
     'ALTER TABLE cards ADD COLUMN franchise_conf TEXT',
     'ALTER TABLE trades ADD COLUMN sender_coins INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE trades ADD COLUMN receiver_coins INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0',
   ]) {
     try { db.exec(col); } catch { /* already exists */ }
   }
@@ -181,9 +183,12 @@ export interface User {
   coins: number;
   packs_opened_today: number;
   last_pack_date: string | null;
+  is_admin: number;
   created_at: string;
   last_login: string;
 }
+
+export const SUPER_ADMIN_CSA_ID = 121;
 
 export function upsertUser(discordId: string, discordUsername: string, avatarUrl: string | null, csaId?: number, csaName?: string): User {
   const database = getDb();
@@ -546,6 +551,118 @@ export function searchUsers(query: string, limit = 20): User[] {
     return getDb().prepare(`SELECT * FROM users WHERE csa_id = ? LIMIT ?`).all(numeric, limit) as User[];
   }
   return getDb().prepare(`SELECT * FROM users WHERE (csa_name LIKE ? OR discord_username LIKE ?) LIMIT ?`).all(`%${query}%`, `%${query}%`, limit) as User[];
+}
+
+// ---- Admin operations ----
+
+export function isAdmin(user: User): boolean {
+  return user.is_admin === 1 || user.csa_id === SUPER_ADMIN_CSA_ID;
+}
+
+export function isSuperAdmin(user: User): boolean {
+  return user.csa_id === SUPER_ADMIN_CSA_ID;
+}
+
+export function setAdminStatus(userId: number, isAdmin: boolean): void {
+  getDb().prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(isAdmin ? 1 : 0, userId);
+}
+
+export function getSystemStats() {
+  const db = getDb();
+  const totalUsers = (db.prepare('SELECT COUNT(*) as n FROM users').get() as { n: number }).n;
+  const totalCards = (db.prepare('SELECT COUNT(*) as n FROM user_cards').get() as { n: number }).n;
+  const totalListings = (db.prepare("SELECT COUNT(*) as n FROM marketplace_listings WHERE status = 'active'").get() as { n: number }).n;
+  const totalListingValue = (db.prepare("SELECT COALESCE(SUM(price),0) as n FROM marketplace_listings WHERE status = 'active'").get() as { n: number }).n;
+  const totalTrades = (db.prepare("SELECT COUNT(*) as n FROM trades WHERE status = 'pending'").get() as { n: number }).n;
+  const totalCoins = (db.prepare('SELECT COALESCE(SUM(coins),0) as n FROM users').get() as { n: number }).n;
+  const cardsByRarity = db.prepare(`
+    SELECT c.rarity, COUNT(*) as count FROM user_cards uc
+    JOIN cards c ON uc.card_id = c.id GROUP BY c.rarity ORDER BY count DESC
+  `).all() as { rarity: string; count: number }[];
+  const admins = db.prepare('SELECT id, discord_username, csa_id, csa_name, avatar_url FROM users WHERE is_admin = 1').all() as Pick<User, 'id' | 'discord_username' | 'csa_id' | 'csa_name' | 'avatar_url'>[];
+  return { totalUsers, totalCards, totalListings, totalListingValue, totalTrades, totalCoins, cardsByRarity, admins };
+}
+
+export function getAllUsers(search?: string, limit = 50): (User & { card_count: number })[] {
+  if (search?.trim()) {
+    const numeric = parseInt(search);
+    if (!isNaN(numeric)) {
+      return getDb().prepare(`
+        SELECT u.*, COUNT(uc.id) as card_count FROM users u
+        LEFT JOIN user_cards uc ON u.id = uc.user_id
+        WHERE u.csa_id = ? GROUP BY u.id LIMIT ?
+      `).all(numeric, limit) as (User & { card_count: number })[];
+    }
+    return getDb().prepare(`
+      SELECT u.*, COUNT(uc.id) as card_count FROM users u
+      LEFT JOIN user_cards uc ON u.id = uc.user_id
+      WHERE u.csa_name LIKE ? OR u.discord_username LIKE ?
+      GROUP BY u.id ORDER BY card_count DESC LIMIT ?
+    `).all(`%${search}%`, `%${search}%`, limit) as (User & { card_count: number })[];
+  }
+  return getDb().prepare(`
+    SELECT u.*, COUNT(uc.id) as card_count FROM users u
+    LEFT JOIN user_cards uc ON u.id = uc.user_id
+    GROUP BY u.id ORDER BY u.last_login DESC LIMIT ?
+  `).all(limit) as (User & { card_count: number })[];
+}
+
+export function adminSetCoins(userId: number, amount: number): number {
+  getDb().prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(amount, userId);
+  const updated = getUserById(userId)!;
+  recordCoinTransaction(userId, amount, updated.coins, amount >= 0 ? 'admin_grant' : 'admin_deduct', `Admin: ${amount >= 0 ? 'added' : 'removed'} ${Math.abs(amount)} coins`);
+  return updated.coins;
+}
+
+export function adminCancelListing(listingId: number): boolean {
+  const db = getDb();
+  const listing = db.prepare("SELECT * FROM marketplace_listings WHERE id = ? AND status = 'active'").get(listingId) as MarketplaceListing | undefined;
+  if (!listing) return false;
+  db.prepare("UPDATE marketplace_listings SET status = 'cancelled' WHERE id = ?").run(listingId);
+  db.prepare('UPDATE user_cards SET is_listed = 0 WHERE id = ?').run(listing.user_card_id);
+  return true;
+}
+
+export function adminCancelTrade(tradeId: number): boolean {
+  const db = getDb();
+  const trade = db.prepare("SELECT * FROM trades WHERE id = ? AND status = 'pending'").get(tradeId);
+  if (!trade) return false;
+  db.prepare("UPDATE trades SET status = 'cancelled', resolved_at = CURRENT_TIMESTAMP WHERE id = ?").run(tradeId);
+  return true;
+}
+
+export function adminGetAllListings(limit = 100) {
+  return getDb().prepare(`
+    SELECT ml.*, c.player_name, c.rarity, c.franchise_name,
+      u.discord_username as seller_name, u.csa_name as seller_csa_name
+    FROM marketplace_listings ml
+    JOIN cards c ON ml.card_id = c.id
+    JOIN users u ON ml.seller_id = u.id
+    WHERE ml.status = 'active'
+    ORDER BY ml.listed_at DESC LIMIT ?
+  `).all(limit);
+}
+
+export function adminGetAllTrades(limit = 100) {
+  return getDb().prepare(`
+    SELECT t.*,
+      su.discord_username as sender_name, su.csa_name as sender_csa_name,
+      ru.discord_username as receiver_name, ru.csa_name as receiver_csa_name
+    FROM trades t
+    JOIN users su ON t.sender_id = su.id
+    JOIN users ru ON t.receiver_id = ru.id
+    WHERE t.status = 'pending'
+    ORDER BY t.created_at DESC LIMIT ?
+  `).all(limit);
+}
+
+export function adminRemoveCard(userCardId: number): boolean {
+  const db = getDb();
+  const uc = db.prepare('SELECT * FROM user_cards WHERE id = ?').get(userCardId) as { is_listed: number } | undefined;
+  if (!uc) return false;
+  if (uc.is_listed) db.prepare("UPDATE marketplace_listings SET status = 'cancelled' WHERE user_card_id = ? AND status = 'active'").run(userCardId);
+  db.prepare('DELETE FROM user_cards WHERE id = ?').run(userCardId);
+  return true;
 }
 
 // ---- Trade interfaces ----

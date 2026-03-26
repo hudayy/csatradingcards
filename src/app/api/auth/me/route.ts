@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession, COOKIE_NAME } from '@/lib/auth';
-import { getUserByDiscordId, getUserCollectionStats } from '@/lib/db';
+import { getUserByDiscordId, getUserCollectionStats, isAdmin, isSuperAdmin, SUPER_ADMIN_CSA_ID } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +26,8 @@ export async function GET() {
       csa_id: user.csa_id,
       csa_name: user.csa_name,
       coins: user.coins,
+      is_admin: isAdmin(user),
+      is_super_admin: isSuperAdmin(user),
     },
     stats,
   });

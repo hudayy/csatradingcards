@@ -30,8 +30,14 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { user_card_id, price } = body;
 
+  const MAX_LISTING_PRICE = 1_000_000;
+
   if (!user_card_id || !price || price < 1) {
     return NextResponse.json({ error: 'Invalid listing data' }, { status: 400 });
+  }
+
+  if (price > MAX_LISTING_PRICE) {
+    return NextResponse.json({ error: `Maximum listing price is ${MAX_LISTING_PRICE.toLocaleString()} coins` }, { status: 400 });
   }
 
   // Verify ownership

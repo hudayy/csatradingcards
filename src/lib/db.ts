@@ -170,6 +170,9 @@ function initializeSchema(db: Database.Database) {
     try { db.exec(col); } catch { /* already exists */ }
   }
 
+  // Clamp any existing listings above the max price to 1,000,000
+  db.exec(`UPDATE marketplace_listings SET price = 1000000 WHERE price > 1000000 AND status = 'active'`);
+
   // Expand coin_transactions type CHECK if it's still the old restrictive one
   const ctInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='coin_transactions'").get() as { sql: string } | undefined;
   if (ctInfo?.sql.includes('type IN (')) {

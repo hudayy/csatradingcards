@@ -118,11 +118,14 @@ export default function TradingCard({ card, onClick, showPrice, size = 'normal' 
     return (
       <div
         ref={cardRef}
-        className={`trading-card gm-card rarity-prismatic ${sizeClass} ${isHovered ? 'is-hovered' : ''}`}
+        className={`trading-card gm-card ${sizeClass} ${isHovered ? 'is-hovered' : ''}`}
         style={{ background: gmBg, ...(size === 'small' ? { width: 180, height: 280 } : {}) }}
         {...sharedHandlers}
       >
-        <div className="trading-card-glow-bg" />
+        <div
+          className="trading-card-glow-bg"
+          style={color ? { background: `radial-gradient(ellipse at 50% 50%, ${color}bb, transparent 70%)`, opacity: 1 } : undefined}
+        />
 
         <div className="trading-card-inner gm-card-inner">
           <div className="card-glare" />

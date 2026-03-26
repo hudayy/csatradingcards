@@ -840,15 +840,35 @@ body {
 
 /* ---- GM Cards ---- */
 
-/* Keep inner background transparent so franchise gradient shows through */
+/* Transparent inner so franchise gradient on the outer div shows through */
 .gm-card-inner {
   background: transparent !important;
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.35) !important;
 }
 
-/* Remove the full-card rainbow color-dodge overlay — franchise color must stay visible */
-.gm-card .trading-card-inner::before {
-  background: none !important;
+/* Suppress all prismatic pseudo-element effects */
+.gm-card .trading-card-inner::before,
+.gm-card .trading-card-inner::after {
+  display: none !important;
 }
+
+/* White-only foil shimmer — follows mouse, no color distortion */
+.gm-card .card-foil-sweep {
+  background: linear-gradient(
+    115deg,
+    transparent 20%,
+    rgba(255, 255, 255, 0.08) 38%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(255, 255, 255, 0.08) 62%,
+    transparent 80%
+  );
+  background-size: 300% 300%;
+  background-position: calc(var(--mouse-x, 50%) * 2) calc(var(--mouse-y, 50%) * 2);
+  mix-blend-mode: overlay;
+  filter: none;
+  opacity: 0.5;
+}
+.gm-card.is-hovered .card-foil-sweep { opacity: 1; }
 
 /* Franchise logo in the top-left of GM cards */
 .gm-franchise-logo-top {

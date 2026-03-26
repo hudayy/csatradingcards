@@ -365,7 +365,7 @@ export async function getGMPool(): Promise<GMCardData[]> {
       franchise_conf: franchiseConfMap.get(franchise.id) ?? null,
       tier_name: null,
       tier_abbr: null,
-      rarity: 'gm',
+      rarity: 'prismatic',
       stat_gpg: 0,
       stat_apg: 0,
       stat_svpg: 0,

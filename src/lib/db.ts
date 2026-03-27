@@ -396,6 +396,7 @@ export function getUserCards(userId: number, filters?: {
   franchiseId?: number;
   seasonId?: number;
   tierAbbr?: string;
+  search?: string;
 }): UserCardWithCopyCount[] {
   let query = `
     SELECT uc.id as user_card_id, uc.user_id, uc.card_id, uc.acquired_at, uc.source, uc.is_listed,
@@ -425,6 +426,10 @@ export function getUserCards(userId: number, filters?: {
   if (filters?.tierAbbr) {
     query += ' AND c.tier_abbr = ?';
     params.push(filters.tierAbbr);
+  }
+  if (filters?.search) {
+    query += ' AND c.player_name LIKE ?';
+    params.push(`%${filters.search}%`);
   }
 
   query += ` ORDER BY CASE c.rarity WHEN 'prismatic' THEN 7 WHEN 'holographic' THEN 6 WHEN 'diamond' THEN 5 WHEN 'platinum' THEN 4 WHEN 'gold' THEN 3 WHEN 'silver' THEN 2 ELSE 1 END DESC, uc.acquired_at DESC`;

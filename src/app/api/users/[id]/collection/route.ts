@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession } from '@/lib/auth';
-import { getUserPublicCards } from '@/lib/db';
+import { getUserById, getUserCards } from '@/lib/db';
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const session = await getSession();
-  if (!session) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-  }
-
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const userId = parseInt(id);
-  if (isNaN(userId)) {
-    return NextResponse.json({ error: 'Invalid user id' }, { status: 400 });
-  }
+  if (isNaN(userId)) return NextResponse.json({ error: 'Invalid user ID' }, { status: 400 });
 
-  const cards = getUserPublicCards(userId);
-  return NextResponse.json({ cards });
+  const user = getUserById(userId);
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+  const { searchParams } = new URL(req.url);
+  const rarity = searchParams.get('rarity') || undefined;
+  const search = searchParams.get('search') || undefined;
+
+  const cards = getUserCards(userId, { rarity, search });
+  return NextResponse.json({
+    cards,
+    user: { id: user.id, discord_username: user.discord_username, csa_name: user.csa_name, avatar_url: user.avatar_url },
+  });
 }

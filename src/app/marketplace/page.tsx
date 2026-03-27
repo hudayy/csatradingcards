@@ -264,7 +264,9 @@ export default function MarketplacePage() {
                     size="small"
                   />
                   <div className="listing-price" style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}><Coins size={16} /> {listing.price.toLocaleString()}</div>
-                  <div className="listing-seller">Seller: {listing.seller_name}</div>
+                  <div className="listing-seller">
+                    Seller: <a href={`/u/${listing.seller_id}`} style={{ color: 'var(--accent-blue)', textDecoration: 'none' }} onClick={e => e.stopPropagation()}>{listing.seller_name}</a>
+                  </div>
                   {listing.expires_at && (
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center' }}>
                       Expires {new Date(listing.expires_at).toLocaleDateString()}

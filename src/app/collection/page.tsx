@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import TradingCard from '@/components/TradingCard';
-import { FolderOpen, LogIn, Package, Coins, Tag, Flame, ChevronLeft, Layers } from 'lucide-react';
+import { FolderOpen, LogIn, Package, Coins, Tag, Flame, ChevronLeft, Layers, ArrowUp, Store, Star } from 'lucide-react';
 
 interface InventoryPack {
   id: number;
@@ -35,7 +35,7 @@ interface CardData {
   tier_name: string | null;
   tier_abbr: string | null;
   rarity: string;
-  card_type?: string;
+  card_type?: 'player' | 'gm';
   stat_gpg: number;
   stat_apg: number;
   stat_svpg: number;
@@ -96,6 +96,20 @@ export default function CollectionPage() {
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkSelected, setBulkSelected] = useState<Set<number>>(new Set());
   const [bulkSalvaging, setBulkSalvaging] = useState(false);
+  // Bulk list
+  const [bulkListMode, setBulkListMode] = useState(false);
+  const [bulkListSelected, setBulkListSelected] = useState<Set<number>>(new Set());
+  const [bulkListPrices, setBulkListPrices] = useState<Record<string, string>>({});
+  const [bulkListing, setBulkListing] = useState(false);
+  // Trade up
+  const [tradeUpMode, setTradeUpMode] = useState(false);
+  const [tradeUpSelected, setTradeUpSelected] = useState<Set<number>>(new Set());
+  const [tradeUpLoading, setTradeUpLoading] = useState(false);
+  const [tradeUpResult, setTradeUpResult] = useState<{ card: CardData; traded_rarity: string; received_rarity: string } | null>(null);
+  // Showcase
+  const [showcasePosition, setShowcasePosition] = useState<number>(1);
+  const [addingToShowcase, setAddingToShowcase] = useState(false);
+  const [showcaseAddMsg, setShowcaseAddMsg] = useState<string | null>(null);
 
   const fetchCards = async (rarity?: string) => {
     const params = new URLSearchParams();
@@ -246,6 +260,73 @@ export default function CollectionPage() {
     setBulkSalvaging(false);
   };
 
+  const handleBulkList = async () => {
+    if (bulkListSelected.size === 0 || bulkListing) return;
+    const items = Array.from(bulkListSelected).map(ucId => {
+      const card = cards.find(c => c.user_card_id === ucId)!;
+      const price = parseInt(bulkListPrices[card.rarity] || '0');
+      return { user_card_id: ucId, price };
+    }).filter(i => i.price >= 1);
+    if (items.length === 0) { setListingStatus('Set a price for at least one rarity'); return; }
+    setBulkListing(true);
+    try {
+      const res = await fetch('/api/marketplace/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setListingStatus(`Listed ${data.listed} card${data.listed !== 1 ? 's' : ''}!`);
+        setBulkListSelected(new Set()); setBulkListMode(false); setBulkListPrices({});
+        fetchCards(selectedRarity); fetchAllCards();
+        setTimeout(() => setListingStatus(null), 2500);
+      } else { setListingStatus(data.error || 'Bulk listing failed'); }
+    } catch { setListingStatus('Network error'); }
+    setBulkListing(false);
+  };
+
+  const handleTradeUp = async () => {
+    if (tradeUpSelected.size !== 5 || tradeUpLoading) return;
+    setTradeUpLoading(true);
+    try {
+      const res = await fetch('/api/collection/trade-up', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_card_ids: Array.from(tradeUpSelected) }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTradeUpResult({ card: data.card, traded_rarity: data.traded_rarity, received_rarity: data.received_rarity });
+        setTradeUpSelected(new Set()); setTradeUpMode(false);
+        fetchCards(selectedRarity); fetchAllCards();
+      } else { setListingStatus(data.error || 'Trade-up failed'); setTimeout(() => setListingStatus(null), 3000); }
+    } catch { setListingStatus('Network error'); }
+    setTradeUpLoading(false);
+  };
+
+  const handleAddToShowcase = async () => {
+    if (!selectedCard?.user_card_id || addingToShowcase) return;
+    setAddingToShowcase(true);
+    try {
+      const res = await fetch('/api/profile/showcase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_card_id: selectedCard.user_card_id, position: showcasePosition }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowcaseAddMsg(`Added to display case slot ${showcasePosition}!`);
+      } else {
+        setShowcaseAddMsg(data.error || 'Failed to add to showcase');
+      }
+    } catch {
+      setShowcaseAddMsg('Network error');
+    }
+    setAddingToShowcase(false);
+    setTimeout(() => setShowcaseAddMsg(null), 3000);
+  };
+
   if (loading) {
     return <div className="container"><div className="loading-spinner"><div className="spinner" /></div></div>;
   }
@@ -272,6 +353,13 @@ export default function CollectionPage() {
     const card = cards.find(c => c.user_card_id === ucId);
     return sum + (card ? (SALVAGE_VALUES[card.rarity] ?? 10) : 0);
   }, 0);
+
+  // Trade-up helpers
+  const tradeUpRarity = tradeUpSelected.size > 0
+    ? cards.find(c => c.user_card_id === Array.from(tradeUpSelected)[0])?.rarity ?? null
+    : null;
+  const RARITY_UPGRADE: Record<string, string> = { bronze: 'silver', silver: 'gold', gold: 'platinum', platinum: 'diamond', diamond: 'holographic', holographic: 'prismatic' };
+  const bulkListRarities = [...new Set(Array.from(bulkListSelected).map(ucId => cards.find(c => c.user_card_id === ucId)?.rarity).filter(Boolean) as string[])];
 
   // Group inventory by pack_type for display
   const inventoryByType = inventory.reduce<Record<string, InventoryPack[]>>((acc, p) => {
@@ -300,16 +388,34 @@ export default function CollectionPage() {
       {/* ---- Cards tab ---- */}
       {activeTab === 'cards' && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '0.75rem', gap: '0.5rem' }}>
-            {bulkMode && bulkSelected.size > 0 && (
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{bulkSelected.size} selected</span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginBottom: '0.75rem', gap: '0.5rem', flexWrap: 'wrap' }}>
+            {(bulkMode || bulkListMode || tradeUpMode) && (
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                {bulkMode && `${bulkSelected.size} selected`}
+                {bulkListMode && `${bulkListSelected.size} selected`}
+                {tradeUpMode && `${tradeUpSelected.size}/5 selected${tradeUpRarity ? ` (${tradeUpRarity})` : ''}`}
+              </span>
             )}
             <button
               className={`btn btn-sm${bulkMode ? ' btn-danger' : ' btn-secondary'}`}
               style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}
-              onClick={() => { setBulkMode(m => !m); setBulkSelected(new Set()); }}
+              onClick={() => { setBulkMode(m => !m); setBulkSelected(new Set()); setBulkListMode(false); setBulkListSelected(new Set()); setTradeUpMode(false); setTradeUpSelected(new Set()); }}
             >
               <Layers size={14} /> {bulkMode ? 'Cancel' : 'Bulk Salvage'}
+            </button>
+            <button
+              className={`btn btn-sm${bulkListMode ? ' btn-danger' : ' btn-secondary'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}
+              onClick={() => { setBulkListMode(m => !m); setBulkListSelected(new Set()); setBulkMode(false); setBulkSelected(new Set()); setTradeUpMode(false); setTradeUpSelected(new Set()); }}
+            >
+              <Store size={14} /> {bulkListMode ? 'Cancel' : 'Bulk List'}
+            </button>
+            <button
+              className={`btn btn-sm${tradeUpMode ? ' btn-danger' : ' btn-secondary'}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem' }}
+              onClick={() => { setTradeUpMode(m => !m); setTradeUpSelected(new Set()); setBulkMode(false); setBulkSelected(new Set()); setBulkListMode(false); setBulkListSelected(new Set()); }}
+            >
+              <ArrowUp size={14} /> {tradeUpMode ? 'Cancel' : 'Trade Up (5→1)'}
             </button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '0.5rem', marginBottom: '1.5rem' }}>
@@ -354,28 +460,41 @@ export default function CollectionPage() {
           ) : (
             <div className="card-grid">
               {cards.map((card, i) => {
+                const ucId = card.user_card_id!;
                 if (bulkMode) {
-                  const ucId = card.user_card_id!;
                   const isSelected = bulkSelected.has(ucId);
                   const canSelect = !card.is_listed;
                   return (
-                    <div
-                      key={`${card.id}-${i}`}
-                      className={`card-select-wrapper${isSelected ? ' selected' : ''}${!canSelect ? ' unlisted' : ''}`}
-                      onClick={() => {
-                        if (!canSelect) return;
-                        setBulkSelected(prev => {
-                          const next = new Set(prev);
-                          if (next.has(ucId)) next.delete(ucId); else next.add(ucId);
-                          return next;
-                        });
-                      }}
-                    >
+                    <div key={`${card.id}-${i}`} className={`card-select-wrapper${isSelected ? ' selected' : ''}${!canSelect ? ' unlisted' : ''}`}
+                      onClick={() => { if (!canSelect) return; setBulkSelected(prev => { const n = new Set(prev); if (n.has(ucId)) n.delete(ucId); else n.add(ucId); return n; }); }}>
                       <TradingCard card={card} />
                     </div>
                   );
                 }
-                return <TradingCard key={`${card.id}-${i}`} card={card} onClick={() => setSelectedCard(card)} />;
+                if (bulkListMode) {
+                  const isSelected = bulkListSelected.has(ucId);
+                  const canSelect = !card.is_listed;
+                  return (
+                    <div key={`${card.id}-${i}`} className={`card-select-wrapper${isSelected ? ' selected' : ''}${!canSelect ? ' unlisted' : ''}`}
+                      onClick={() => { if (!canSelect) return; setBulkListSelected(prev => { const n = new Set(prev); if (n.has(ucId)) n.delete(ucId); else n.add(ucId); return n; }); }}>
+                      <TradingCard card={card} />
+                    </div>
+                  );
+                }
+                if (tradeUpMode) {
+                  const isSelected = tradeUpSelected.has(ucId);
+                  const wrongRarity = tradeUpRarity !== null && card.rarity !== tradeUpRarity;
+                  const maxReached = tradeUpSelected.size >= 5 && !isSelected;
+                  const isPrismatic = card.rarity === 'prismatic';
+                  const canSelect = !card.is_listed && !wrongRarity && !maxReached && !isPrismatic;
+                  return (
+                    <div key={`${card.id}-${i}`} className={`card-select-wrapper${isSelected ? ' selected' : ''}${!canSelect ? ' unlisted' : ''}`}
+                      onClick={() => { if (!canSelect) return; setTradeUpSelected(prev => { const n = new Set(prev); if (n.has(ucId)) n.delete(ucId); else n.add(ucId); return n; }); }}>
+                      <TradingCard card={card} />
+                    </div>
+                  );
+                }
+                return <TradingCard key={`${card.id}-${i}`} card={card} onClick={() => { setSelectedCard(card); setShowcasePosition(1); setShowcaseAddMsg(null); setSalvageConfirm(false); setListPrice(''); }} />;
               })}
             </div>
           )}
@@ -535,14 +654,88 @@ export default function CollectionPage() {
               ? `${bulkSelected.size} card${bulkSelected.size !== 1 ? 's' : ''} · ${bulkTotalCoins.toLocaleString()} coins`
               : 'Select cards to salvage'}
           </span>
-          <button
-            className="btn bulk-salvage-btn"
-            disabled={bulkSelected.size === 0 || bulkSalvaging}
-            onClick={handleBulkSalvage}
-          >
+          <button className="btn bulk-salvage-btn" disabled={bulkSelected.size === 0 || bulkSalvaging} onClick={handleBulkSalvage}>
             <Flame size={15} />
             {bulkSalvaging ? 'Salvaging...' : `Salvage for ${bulkTotalCoins.toLocaleString()} Coins`}
           </button>
+        </div>
+      )}
+
+      {/* ---- Bulk list bar ---- */}
+      {bulkListMode && (
+        <div className="bulk-salvage-bar" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <Store size={16} />
+            <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>
+              {bulkListSelected.size > 0 ? `${bulkListSelected.size} cards selected` : 'Select cards to list'}
+            </span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>— Set a price per rarity tier below</span>
+          </div>
+          {bulkListRarities.length > 0 && (
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              {bulkListRarities.map(r => (
+                <div key={r} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', padding: '0.25rem 0.5rem' }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'capitalize', color: RARITY_COLORS_HEX[r] || 'var(--text-primary)' }}>{r}</span>
+                  <Coins size={12} style={{ color: 'var(--accent-gold)' }} />
+                  <input
+                    type="number" min={1} placeholder="price"
+                    value={bulkListPrices[r] || ''}
+                    onChange={e => setBulkListPrices(p => ({ ...p, [r]: e.target.value }))}
+                    style={{ width: 80, padding: '0.15rem 0.35rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.8rem' }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn btn-primary" disabled={bulkListSelected.size === 0 || bulkListing} onClick={handleBulkList} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Store size={15} />
+              {bulkListing ? 'Listing...' : `List ${bulkListSelected.size} Cards`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Trade-up bar ---- */}
+      {tradeUpMode && (
+        <div className="bulk-salvage-bar" style={{ background: 'rgba(124,58,237,0.15)', borderColor: 'rgba(124,58,237,0.4)' }}>
+          <span className="bulk-salvage-info" style={{ color: 'var(--text-primary)' }}>
+            <ArrowUp size={16} />
+            {tradeUpSelected.size === 0
+              ? 'Select 5 cards of the same rarity to trade up'
+              : tradeUpSelected.size < 5
+              ? `${tradeUpSelected.size}/5 ${tradeUpRarity} cards selected`
+              : `5 ${tradeUpRarity} cards → 1 ${RARITY_UPGRADE[tradeUpRarity!] || '?'} card`}
+          </span>
+          <button
+            className="btn"
+            style={{ background: 'rgba(124,58,237,0.8)', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            disabled={tradeUpSelected.size !== 5 || tradeUpLoading}
+            onClick={handleTradeUp}
+          >
+            <ArrowUp size={15} />
+            {tradeUpLoading ? 'Trading Up...' : `Trade Up`}
+          </button>
+        </div>
+      )}
+
+      {/* ---- Trade-up result ---- */}
+      {tradeUpResult && (
+        <div className="modal-overlay" onClick={() => setTradeUpResult(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ textAlign: 'center' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Trade Up Complete!</h3>
+              <button className="modal-close" onClick={() => setTradeUpResult(null)}>×</button>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1rem', fontSize: '0.9rem' }}>
+              Traded 5 <span style={{ textTransform: 'capitalize', fontWeight: 700 }}>{tradeUpResult.traded_rarity}</span> cards for a{' '}
+              <span style={{ textTransform: 'capitalize', fontWeight: 700, color: RARITY_COLORS_HEX[tradeUpResult.received_rarity] || 'var(--accent-gold)' }}>{tradeUpResult.received_rarity}</span> card!
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.25rem' }}>
+              <TradingCard card={tradeUpResult.card} />
+            </div>
+            <button className="btn btn-primary" onClick={() => setTradeUpResult(null)}>Nice!</button>
+          </div>
         </div>
       )}
 
@@ -585,6 +778,40 @@ export default function CollectionPage() {
                 <div className="modal-actions" style={{ marginBottom: '1rem' }}>
                   <button className="btn btn-secondary" onClick={() => { setSelectedCard(null); setSalvageConfirm(false); }}>Cancel</button>
                   <button className="btn btn-primary" onClick={handleListCard} disabled={!listPrice || parseInt(listPrice) < 1}>List for Sale</button>
+                </div>
+
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1rem', marginBottom: '1rem' }}>
+                  <div style={{ marginBottom: '0.5rem', fontWeight: 600, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Star size={15} style={{ color: 'var(--accent-gold)' }} /> Add to Display Case
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem' }}>
+                    {[1, 2, 3, 4, 5].map(pos => (
+                      <button
+                        key={pos}
+                        onClick={() => setShowcasePosition(pos)}
+                        style={{
+                          flex: 1, padding: '0.35rem', borderRadius: 'var(--radius-sm)',
+                          border: `1px solid ${showcasePosition === pos ? 'var(--accent-gold)' : 'var(--border-subtle)'}`,
+                          background: showcasePosition === pos ? 'rgba(250,204,21,0.15)' : 'var(--bg-secondary)',
+                          color: showcasePosition === pos ? 'var(--accent-gold)' : 'var(--text-muted)',
+                          cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem',
+                        }}
+                      >{pos}</button>
+                    ))}
+                  </div>
+                  {showcaseAddMsg && (
+                    <div style={{ fontSize: '0.8rem', color: showcaseAddMsg.includes('!') ? 'var(--accent-green)' : 'var(--accent-red)', marginBottom: '0.5rem' }}>
+                      {showcaseAddMsg}
+                    </div>
+                  )}
+                  <button
+                    className="btn btn-secondary"
+                    style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                    onClick={handleAddToShowcase}
+                    disabled={addingToShowcase}
+                  >
+                    <Star size={14} /> {addingToShowcase ? 'Adding...' : `Feature in Slot ${showcasePosition}`}
+                  </button>
                 </div>
 
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1rem' }}>

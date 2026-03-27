@@ -45,6 +45,7 @@ interface Trade {
   receiver_coins: number;
   status: string;
   created_at: string;
+  expires_at: string | null;
   sender_name: string;
   sender_avatar: string | null;
   receiver_name: string;
@@ -539,6 +540,11 @@ function TradeItem({ trade, type, onAccept, onDecline, onCancel }: {
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
             {type === 'incoming' ? 'wants to trade' : '— awaiting response'}
           </span>
+          {trade.expires_at && (
+            <span style={{ fontSize: '0.7rem', color: new Date(trade.expires_at) < new Date(Date.now() + 86400000) ? 'var(--accent-red, #f87171)' : 'var(--text-muted)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', padding: '0.1rem 0.4rem' }}>
+              Expires {new Date(trade.expires_at).toLocaleDateString()}
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           {type === 'incoming' && (

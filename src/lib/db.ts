@@ -153,6 +153,17 @@ function initializeSchema(db: Database.Database) {
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS showcase_cards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      user_card_id INTEGER NOT NULL,
+      position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 5),
+      added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (user_card_id) REFERENCES user_cards(id),
+      UNIQUE(user_id, position)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_user_cards_user ON user_cards(user_id);
   `);
 
@@ -166,9 +177,16 @@ function initializeSchema(db: Database.Database) {
     'ALTER TABLE users ADD COLUMN last_daily_bonus DATE',
     'ALTER TABLE users ADD COLUMN last_prestige_grant DATE',
     "ALTER TABLE cards ADD COLUMN card_type TEXT NOT NULL DEFAULT 'player'",
+    'ALTER TABLE trades ADD COLUMN expires_at DATETIME',
+    'ALTER TABLE marketplace_listings ADD COLUMN expires_at DATETIME',
   ]) {
     try { db.exec(col); } catch { /* already exists */ }
   }
+
+  // Back-fill expires_at for trades that don't have it (7 day TTL)
+  db.exec(`UPDATE trades SET expires_at = datetime(created_at, '+7 days') WHERE expires_at IS NULL AND status = 'pending'`);
+  // Back-fill expires_at for active listings that don't have it (30 day TTL)
+  db.exec(`UPDATE marketplace_listings SET expires_at = datetime(listed_at, '+30 days') WHERE expires_at IS NULL AND status = 'active'`);
 
   // Clamp any existing listings above the max price to 1,000,000
   db.exec(`UPDATE marketplace_listings SET price = 1000000 WHERE price > 1000000 AND status = 'active'`);
@@ -482,7 +500,7 @@ export function createListing(sellerId: number, userCardId: number, cardId: stri
     if (!card) throw new Error('Card not found');
     if (card.is_listed) throw new Error('Card is already listed');
     db.prepare('UPDATE user_cards SET is_listed = 1 WHERE id = ?').run(userCardId);
-    const result = db.prepare('INSERT INTO marketplace_listings (seller_id, user_card_id, card_id, price) VALUES (?, ?, ?, ?)').run(sellerId, userCardId, cardId, price);
+    const result = db.prepare(`INSERT INTO marketplace_listings (seller_id, user_card_id, card_id, price, expires_at) VALUES (?, ?, ?, ?, datetime('now', '+30 days'))`).run(sellerId, userCardId, cardId, price);
     listingId = result.lastInsertRowid as number;
   })();
   return listingId;
@@ -495,6 +513,14 @@ export function getActiveListings(filters?: {
   maxPrice?: number;
   search?: string;
 }, limit = 50, offset = 0): ListingWithDetails[] {
+  const database = getDb();
+  // Auto-cancel expired listings
+  const expired = database.prepare(`SELECT id, user_card_id FROM marketplace_listings WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP`).all() as { id: number; user_card_id: number }[];
+  for (const { id, user_card_id } of expired) {
+    database.prepare(`UPDATE marketplace_listings SET status = 'cancelled' WHERE id = ?`).run(id);
+    database.prepare(`UPDATE user_cards SET is_listed = 0 WHERE id = ?`).run(user_card_id);
+  }
+
   let query = `
     SELECT ml.*, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
@@ -532,7 +558,7 @@ export function getActiveListings(filters?: {
   query += ' ORDER BY ml.listed_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
-  return getDb().prepare(query).all(...params) as ListingWithDetails[];
+  return database.prepare(query).all(...params) as ListingWithDetails[];
 }
 
 export function buyListing(listingId: number, buyerId: number): { success: boolean; error?: string; new_balance?: number } {
@@ -820,7 +846,14 @@ export function getExtendedUserStats(userId: number) {
     WHERE uc.user_id = ? ORDER BY uc.acquired_at DESC LIMIT 5
   `).all(userId) as { player_name: string; rarity: string; franchise_name: string | null; player_avatar_url: string | null; acquired_at: string; source: string }[];
 
-  return { totalCards, listedCards, uniquePlayers, byRarity, byFranchise, bestCard, totalPacksOpened, tradesCompleted, salesCompleted, purchasesCompleted, bySource, recentCards };
+  const byTier = db.prepare(`
+    SELECT c.tier_name, COUNT(*) as count
+    FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+    WHERE uc.user_id = ? AND c.tier_name IS NOT NULL
+    GROUP BY c.tier_name ORDER BY count DESC
+  `).all(userId) as { tier_name: string; count: number }[];
+
+  return { totalCards, listedCards, uniquePlayers, byRarity, byFranchise, bestCard, totalPacksOpened, tradesCompleted, salesCompleted, purchasesCompleted, bySource, recentCards, byTier };
 }
 
 // ---- Leaderboard ----
@@ -970,6 +1003,7 @@ export interface Trade {
   status: string;
   created_at: string;
   resolved_at: string | null;
+  expires_at: string | null;
 }
 
 export interface TradeWithDetails extends Trade {
@@ -1017,7 +1051,11 @@ function getTradeCards(tradeId: number, side: 'sender' | 'receiver'): UserCardWi
 }
 
 export function getTradesForUser(userId: number): TradeWithDetails[] {
-  const trades = getDb().prepare(`
+  const database = getDb();
+  // Auto-expire trades past their expires_at
+  database.exec(`UPDATE trades SET status = 'declined', resolved_at = CURRENT_TIMESTAMP WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP`);
+
+  const trades = database.prepare(`
     SELECT t.*,
       su.discord_username as sender_name, su.avatar_url as sender_avatar,
       ru.discord_username as receiver_name, ru.avatar_url as receiver_avatar
@@ -1055,7 +1093,7 @@ export function createTrade(senderId: number, receiverId: number, senderCardIds:
 
   let tradeId: number;
   database.transaction(() => {
-    const result = database.prepare(`INSERT INTO trades (sender_id, receiver_id, sender_coins, receiver_coins, status) VALUES (?, ?, ?, ?, 'pending')`).run(senderId, receiverId, senderCoins, receiverCoins);
+    const result = database.prepare(`INSERT INTO trades (sender_id, receiver_id, sender_coins, receiver_coins, status, expires_at) VALUES (?, ?, ?, ?, 'pending', datetime('now', '+7 days'))`).run(senderId, receiverId, senderCoins, receiverCoins);
     tradeId = result.lastInsertRowid as number;
     for (const id of senderCardIds) {
       database.prepare(`INSERT INTO trade_cards (trade_id, user_card_id, side) VALUES (?, ?, 'sender')`).run(tradeId, id);
@@ -1154,4 +1192,171 @@ export function cancelTrade(tradeId: number, userId: number): boolean {
   if (!trade) return false;
   database.prepare(`UPDATE trades SET status = 'cancelled', resolved_at = CURRENT_TIMESTAMP WHERE id = ?`).run(tradeId);
   return true;
+}
+
+// ---- Marketplace history ----
+
+export interface MarketplaceHistoryItem {
+  id: number;
+  card_id: string;
+  price: number;
+  status: string;
+  listed_at: string;
+  sold_at: string | null;
+  expires_at: string | null;
+  role: 'seller' | 'buyer';
+  other_user: string | null;
+  other_avatar: string | null;
+  player_name: string;
+  rarity: string;
+  franchise_name: string | null;
+  player_avatar_url: string | null;
+}
+
+export function getMarketplaceHistory(userId: number, limit = 50): MarketplaceHistoryItem[] {
+  return getDb().prepare(`
+    SELECT ml.id, ml.card_id, ml.price, ml.status, ml.listed_at, ml.sold_at, ml.expires_at,
+      CASE WHEN ml.seller_id = ? THEN 'seller' ELSE 'buyer' END as role,
+      CASE WHEN ml.seller_id = ? THEN bu.discord_username ELSE su.discord_username END as other_user,
+      CASE WHEN ml.seller_id = ? THEN bu.avatar_url ELSE su.avatar_url END as other_avatar,
+      c.player_name, c.rarity, c.franchise_name, c.player_avatar_url
+    FROM marketplace_listings ml
+    JOIN cards c ON ml.card_id = c.id
+    JOIN users su ON ml.seller_id = su.id
+    LEFT JOIN users bu ON ml.buyer_id = bu.id
+    WHERE ml.seller_id = ? OR (ml.buyer_id = ? AND ml.status = 'sold')
+    ORDER BY COALESCE(ml.sold_at, ml.listed_at) DESC
+    LIMIT ?
+  `).all(userId, userId, userId, userId, userId, limit) as MarketplaceHistoryItem[];
+}
+
+// ---- Bulk marketplace listing ----
+
+export function bulkCreateListings(sellerId: number, items: { user_card_id: number; price: number }[]): { listed: number; skipped: number } {
+  const db = getDb();
+  let listed = 0;
+  let skipped = 0;
+  const MAX_PRICE = 1_000_000;
+
+  db.transaction(() => {
+    for (const { user_card_id, price } of items) {
+      if (price < 1 || price > MAX_PRICE) { skipped++; continue; }
+      const card = db.prepare('SELECT card_id, is_listed FROM user_cards WHERE id = ? AND user_id = ?').get(user_card_id, sellerId) as { card_id: string; is_listed: number } | undefined;
+      if (!card || card.is_listed) { skipped++; continue; }
+      db.prepare('UPDATE user_cards SET is_listed = 1 WHERE id = ?').run(user_card_id);
+      db.prepare(`INSERT INTO marketplace_listings (seller_id, user_card_id, card_id, price, expires_at) VALUES (?, ?, ?, ?, datetime('now', '+30 days'))`).run(sellerId, user_card_id, card.card_id, price);
+      listed++;
+    }
+  })();
+
+  return { listed, skipped };
+}
+
+// ---- Trade up ----
+
+const RARITY_UPGRADE: Record<string, string> = {
+  bronze: 'silver', silver: 'gold', gold: 'platinum',
+  platinum: 'diamond', diamond: 'holographic', holographic: 'prismatic',
+};
+
+/** Validates + removes 5 cards for trade-up. Returns the rarity they were, or throws. */
+export function consumeCardsForTradeUp(userId: number, userCardIds: number[]): string {
+  if (userCardIds.length !== 5) throw new Error('Must select exactly 5 cards');
+  const db = getDb();
+  let commonRarity: string | null = null;
+
+  db.transaction(() => {
+    for (const id of userCardIds) {
+      const row = db.prepare(`
+        SELECT uc.id, uc.user_id, uc.is_listed, c.rarity
+        FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.id = ?
+      `).get(id) as { id: number; user_id: number; is_listed: number; rarity: string } | undefined;
+
+      if (!row) throw new Error('Card not found');
+      if (row.user_id !== userId) throw new Error('Card not owned by you');
+      if (row.is_listed) throw new Error('Cannot trade up a listed card');
+      if (!commonRarity) commonRarity = row.rarity;
+      else if (row.rarity !== commonRarity) throw new Error('All 5 cards must be the same rarity');
+    }
+    if (!RARITY_UPGRADE[commonRarity!]) throw new Error('Prismatic cards cannot be traded up');
+
+    for (const id of userCardIds) {
+      db.prepare('DELETE FROM trade_cards WHERE user_card_id = ?').run(id);
+      db.prepare('DELETE FROM marketplace_listings WHERE user_card_id = ?').run(id);
+      db.prepare('DELETE FROM pack_cards WHERE user_card_id = ?').run(id);
+      db.prepare('DELETE FROM user_cards WHERE id = ?').run(id);
+    }
+  })();
+
+  return commonRarity!;
+}
+
+// ---- Showcase cards ----
+
+export interface ShowcaseCard {
+  position: number;
+  user_card_id: number;
+  card_id: string;
+  player_name: string;
+  player_avatar_url: string | null;
+  franchise_name: string | null;
+  franchise_color: string | null;
+  franchise_logo_url: string | null;
+  franchise_conf: string | null;
+  tier_name: string | null;
+  tier_abbr: string | null;
+  rarity: string;
+  card_type: string;
+  stat_gpg: number;
+  stat_apg: number;
+  stat_svpg: number;
+  stat_win_pct: number;
+  salary: number;
+  overall_rating: number;
+  season_number: number;
+}
+
+export function getShowcaseCards(userId: number): ShowcaseCard[] {
+  return getDb().prepare(`
+    SELECT sc.position, sc.user_card_id,
+      c.id as card_id, c.player_name, c.player_avatar_url, c.franchise_name, c.franchise_color,
+      c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr, c.rarity, c.card_type,
+      c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.season_number
+    FROM showcase_cards sc
+    JOIN user_cards uc ON sc.user_card_id = uc.id
+    JOIN cards c ON uc.card_id = c.id
+    WHERE sc.user_id = ?
+    ORDER BY sc.position ASC
+  `).all(userId) as ShowcaseCard[];
+}
+
+export function setShowcaseCard(userId: number, userCardId: number, position: number): void {
+  if (position < 1 || position > 5) throw new Error('Position must be between 1 and 5');
+  const db = getDb();
+  const uc = db.prepare('SELECT id FROM user_cards WHERE id = ? AND user_id = ?').get(userCardId, userId);
+  if (!uc) throw new Error('Card not found in your collection');
+  db.prepare(`
+    INSERT INTO showcase_cards (user_id, user_card_id, position) VALUES (?, ?, ?)
+    ON CONFLICT(user_id, position) DO UPDATE SET user_card_id = excluded.user_card_id, added_at = CURRENT_TIMESTAMP
+  `).run(userId, userCardId, position);
+}
+
+export function removeShowcaseCard(userId: number, position: number): void {
+  getDb().prepare('DELETE FROM showcase_cards WHERE user_id = ? AND position = ?').run(userId, position);
+}
+
+export function getPublicUserProfile(userId: number): {
+  user: Pick<User, 'id' | 'discord_username' | 'csa_id' | 'csa_name' | 'avatar_url' | 'created_at'>;
+  showcase: ShowcaseCard[];
+  stats: { totalCards: number; uniquePlayers: number; totalPacksOpened: number; tradesCompleted: number };
+} | null {
+  const db = getDb();
+  const user = db.prepare('SELECT id, discord_username, csa_id, csa_name, avatar_url, created_at FROM users WHERE id = ?').get(userId) as Pick<User, 'id' | 'discord_username' | 'csa_id' | 'csa_name' | 'avatar_url' | 'created_at'> | undefined;
+  if (!user) return null;
+  const showcase = getShowcaseCards(userId);
+  const totalCards = (db.prepare('SELECT COUNT(*) as n FROM user_cards WHERE user_id = ?').get(userId) as { n: number }).n;
+  const uniquePlayers = (db.prepare(`SELECT COUNT(DISTINCT c.player_csa_id) as n FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.user_id = ?`).get(userId) as { n: number }).n;
+  const totalPacksOpened = (db.prepare('SELECT COUNT(*) as n FROM packs WHERE user_id = ?').get(userId) as { n: number }).n;
+  const tradesCompleted = (db.prepare(`SELECT COUNT(*) as n FROM trades WHERE (sender_id = ? OR receiver_id = ?) AND status = 'accepted'`).get(userId, userId) as { n: number }).n;
+  return { user, showcase, stats: { totalCards, uniquePlayers, totalPacksOpened, tradesCompleted } };
 }

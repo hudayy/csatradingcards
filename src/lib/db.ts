@@ -165,6 +165,12 @@ function initializeSchema(db: Database.Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_user_cards_user ON user_cards(user_id);
+
+    CREATE TABLE IF NOT EXISTS featured_cards (
+      position INTEGER PRIMARY KEY CHECK(position BETWEEN 1 AND 3),
+      csa_id INTEGER NOT NULL,
+      rarity TEXT NOT NULL
+    );
   `);
 
   // Migrations for existing DBs
@@ -230,6 +236,14 @@ function initializeSchema(db: Database.Database) {
       ALTER TABLE packs_new RENAME TO packs;
     `);
     db.pragma('foreign_keys = ON');
+  }
+
+  // Seed featured cards if empty
+  const featuredCount = (db.prepare('SELECT COUNT(*) as n FROM featured_cards').get() as { n: number }).n;
+  if (featuredCount === 0) {
+    for (const [pos, csaId, rarity] of [[1, 420, 'gold'], [2, 121, 'prismatic'], [3, 314, 'bronze']] as [number, number, string][]) {
+      db.prepare('INSERT OR IGNORE INTO featured_cards (position, csa_id, rarity) VALUES (?, ?, ?)').run(pos, csaId, rarity);
+    }
   }
 
   db.exec(`
@@ -1365,4 +1379,22 @@ export function getPublicUserProfile(userId: number): {
   const totalPacksOpened = (db.prepare('SELECT COUNT(*) as n FROM packs WHERE user_id = ?').get(userId) as { n: number }).n;
   const tradesCompleted = (db.prepare(`SELECT COUNT(*) as n FROM trades WHERE (sender_id = ? OR receiver_id = ?) AND status = 'accepted'`).get(userId, userId) as { n: number }).n;
   return { user, showcase, stats: { totalCards, uniquePlayers, totalPacksOpened, tradesCompleted } };
+}
+
+// ---- Featured cards config ----
+
+export interface FeaturedCardConfig {
+  position: number;
+  csa_id: number;
+  rarity: string;
+}
+
+export function getFeaturedCards(): FeaturedCardConfig[] {
+  return getDb().prepare('SELECT position, csa_id, rarity FROM featured_cards ORDER BY position').all() as FeaturedCardConfig[];
+}
+
+export function setFeaturedCard(position: number, csaId: number, rarity: string): void {
+  getDb().prepare(
+    'INSERT INTO featured_cards (position, csa_id, rarity) VALUES (?, ?, ?) ON CONFLICT(position) DO UPDATE SET csa_id = excluded.csa_id, rarity = excluded.rarity'
+  ).run(position, csaId, rarity);
 }

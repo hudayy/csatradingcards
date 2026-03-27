@@ -5,6 +5,7 @@ import {
   setAdminStatus, getSystemStats, getAllUsers, adminSetCoins,
   adminCancelListing, adminCancelTrade, adminGetAllListings,
   adminGetAllTrades, adminRemoveCard, getUserCards, searchUsers,
+  getFeaturedCards, setFeaturedCard,
 } from '@/lib/db';
 
 async function getAdminUser(requiredSuperAdmin = false) {
@@ -40,6 +41,9 @@ export async function GET(req: NextRequest) {
     const userId = parseInt(req.nextUrl.searchParams.get('user_id') || '');
     if (isNaN(userId)) return NextResponse.json({ error: 'Invalid user_id' }, { status: 400 });
     return NextResponse.json({ cards: getUserCards(userId) });
+  }
+  if (action === 'featured') {
+    return NextResponse.json({ featured: getFeaturedCards() });
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
@@ -112,6 +116,18 @@ export async function POST(req: NextRequest) {
   if (action === 'search_users') {
     const { query } = body;
     return NextResponse.json({ users: searchUsers(query || '') });
+  }
+
+  if (action === 'set_featured') {
+    const { position, csa_id, rarity } = body;
+    const pos = parseInt(position);
+    const csaId = parseInt(csa_id);
+    const RARITIES = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'holographic', 'prismatic'];
+    if (isNaN(pos) || pos < 1 || pos > 3) return NextResponse.json({ error: 'Position must be 1–3' }, { status: 400 });
+    if (isNaN(csaId) || csaId < 1) return NextResponse.json({ error: 'Invalid CSA ID' }, { status: 400 });
+    if (!RARITIES.includes(rarity)) return NextResponse.json({ error: 'Invalid rarity' }, { status: 400 });
+    setFeaturedCard(pos, csaId, rarity);
+    return NextResponse.json({ success: true });
   }
 
   if (action === 'backfill_gm_cards') {

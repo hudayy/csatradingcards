@@ -1,34 +1,30 @@
 import { NextResponse } from 'next/server';
 import { getSeasons } from '@/lib/csa-api';
 import { getPlayerPool, getGMPool, generateCard, type Rarity } from '@/lib/cards';
-
-const FEATURED: { csaId: number; rarity: Rarity }[] = [
-  { csaId: 420, rarity: 'gold' },
-  { csaId: 121, rarity: 'prismatic' },
-  { csaId: 314, rarity: 'bronze' },
-];
+import { getFeaturedCards } from '@/lib/db';
 
 export async function GET() {
   try {
+    const featured = getFeaturedCards();
     const [seasons, pool, gmPool] = await Promise.all([getSeasons(), getPlayerPool(), getGMPool()]);
 
-    const season3 = seasons.find(s => s.number === 3);
-    if (!season3) {
-      return NextResponse.json({ error: 'Season 3 not found' }, { status: 404 });
+    const latestSeason = seasons.sort((a, b) => b.number - a.number)[0];
+    if (!latestSeason) {
+      return NextResponse.json({ error: 'No seasons found' }, { status: 404 });
     }
 
     const gmByCsaId = new Map(gmPool.map(gm => [gm.gm_csa_id, gm]));
 
     const cards = [];
-    for (const { csaId, rarity } of FEATURED) {
-      const gm = gmByCsaId.get(csaId);
+    for (const { csa_id, rarity } of featured) {
+      const gm = gmByCsaId.get(csa_id);
       if (gm) {
         cards.push(gm);
         continue;
       }
-      const entry = pool.find(p => p.player.Player.csa_id === csaId);
+      const entry = pool.find(p => p.player.Player.csa_id === csa_id);
       if (!entry) continue;
-      const card = await generateCard(entry, rarity, { id: season3.id, number: season3.number });
+      const card = await generateCard(entry, rarity as Rarity, { id: latestSeason.id, number: latestSeason.number });
       cards.push(card);
     }
 

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Ban, Coins, Users, BarChart3, ShoppingBag, ArrowLeftRight, Search, Shield, ShieldOff, Trash2, RefreshCw } from 'lucide-react';
+import { Ban, Coins, Users, BarChart3, ShoppingBag, ArrowLeftRight, Search, Shield, ShieldOff, Trash2, RefreshCw, Star } from 'lucide-react';
+import TradingCard from '@/components/TradingCard';
 
 interface UserInfo { id: number; csa_id: number | null; csa_name: string | null; discord_username: string; coins: number; is_admin: boolean; is_super_admin: boolean; }
 interface AdminUser { id: number; csa_id: number | null; csa_name: string | null; discord_username: string; avatar_url: string | null; coins: number; is_admin: number; card_count: number; last_login: string; }
@@ -9,6 +10,10 @@ interface Stats { totalUsers: number; totalCards: number; totalListings: number;
 interface Listing { id: number; player_name: string; rarity: string; franchise_name: string | null; price: number; seller_name: string; seller_csa_name: string | null; listed_at: string; }
 interface Trade { id: number; sender_name: string; sender_csa_name: string | null; receiver_name: string; receiver_csa_name: string | null; sender_coins: number; receiver_coins: number; created_at: string; }
 interface CardData { id: string; user_card_id: number; player_name: string; rarity: string; franchise_name: string | null; season_number: number; is_listed: number; }
+interface FeaturedConfig { position: number; csa_id: number; rarity: string; }
+interface FeaturedCardData { id: string; card_type?: 'player' | 'gm'; player_name: string; player_avatar_url: string | null; franchise_name: string | null; franchise_abbr: string | null; franchise_logo_url?: string | null; franchise_color?: string | null; franchise_conf?: string | null; tier_name: string | null; tier_abbr: string | null; rarity: string; stat_gpg: number; stat_apg: number; stat_svpg: number; stat_win_pct: number; salary: number; overall_rating: number; season_number: number; }
+
+const RARITIES = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'holographic', 'prismatic'];
 
 type Tab = 'dashboard' | 'users' | 'marketplace' | 'trades';
 
@@ -35,6 +40,14 @@ export default function AdminPage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [featuredConfig, setFeaturedConfig] = useState<FeaturedConfig[]>([
+    { position: 1, csa_id: 420, rarity: 'gold' },
+    { position: 2, csa_id: 121, rarity: 'prismatic' },
+    { position: 3, csa_id: 314, rarity: 'bronze' },
+  ]);
+  const [featuredPreview, setFeaturedPreview] = useState<FeaturedCardData[]>([]);
+  const [featuredPreviewLoading, setFeaturedPreviewLoading] = useState(false);
+  const [savingSlot, setSavingSlot] = useState<number | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -46,7 +59,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!me) return;
-    if (tab === 'dashboard') loadStats();
+    if (tab === 'dashboard') { loadStats(); loadFeaturedConfig(); loadFeaturedPreview(); }
     if (tab === 'users') loadUsers('');
     if (tab === 'marketplace') loadListings();
     if (tab === 'trades') loadTrades();
@@ -66,6 +79,26 @@ export default function AdminPage() {
   const loadStats = async () => {
     const d = await fetch('/api/admin?action=stats').then(r => r.json());
     setStats(d);
+  };
+
+  const loadFeaturedConfig = async () => {
+    const d = await fetch('/api/admin?action=featured').then(r => r.json());
+    if (d.featured) setFeaturedConfig(d.featured);
+  };
+
+  const loadFeaturedPreview = async () => {
+    setFeaturedPreviewLoading(true);
+    const d = await fetch('/api/featured').then(r => r.json()).catch(() => ({}));
+    setFeaturedPreview(d.cards || []);
+    setFeaturedPreviewLoading(false);
+  };
+
+  const handleSaveFeaturedSlot = async (slot: FeaturedConfig) => {
+    setSavingSlot(slot.position);
+    const d = await api({ action: 'set_featured', position: slot.position, csa_id: slot.csa_id, rarity: slot.rarity });
+    setSavingSlot(null);
+    if (d.success) { flash(`Slot ${slot.position} updated`, true); loadFeaturedPreview(); }
+    else flash(d.error || 'Failed', false);
   };
   const loadUsers = async (q: string) => {
     const d = await fetch(`/api/admin?action=users&q=${encodeURIComponent(q)}`).then(r => r.json());
@@ -248,6 +281,54 @@ export default function AdminPage() {
                 </div>
               ))}
               {stats.admins.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No other admins</span>}
+            </div>
+          </div>
+
+          {/* Featured Cards editor */}
+          <div style={{ ...cardStyle, marginTop: '1.5rem' }}>
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Star size={14} style={{ color: 'var(--accent-gold)' }} /> Featured Cards (Home Page)
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              {featuredConfig.map(slot => (
+                <div key={slot.position} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 700, minWidth: 48 }}>Slot {slot.position}</span>
+                  <input
+                    type="number"
+                    placeholder="CSA ID"
+                    value={slot.csa_id}
+                    onChange={e => setFeaturedConfig(prev => prev.map(s => s.position === slot.position ? { ...s, csa_id: parseInt(e.target.value) || 0 } : s))}
+                    style={{ width: 90, padding: '0.35rem 0.6rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+                  />
+                  <select
+                    value={slot.rarity}
+                    onChange={e => setFeaturedConfig(prev => prev.map(s => s.position === slot.position ? { ...s, rarity: e.target.value } : s))}
+                    style={{ padding: '0.35rem 0.6rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem', textTransform: 'capitalize' }}
+                  >
+                    {RARITIES.map(r => <option key={r} value={r} style={{ textTransform: 'capitalize' }}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
+                  </select>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => handleSaveFeaturedSlot(slot)}
+                    disabled={savingSlot === slot.position || !slot.csa_id}
+                  >
+                    {savingSlot === slot.position ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '1rem' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                {featuredPreviewLoading ? 'Loading preview…' : 'Preview (current live cards):'}
+              </div>
+              {!featuredPreviewLoading && (
+                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  {featuredPreview.map((card, i) => (
+                    <TradingCard key={i} card={card} size="small" />
+                  ))}
+                  {featuredPreview.length === 0 && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No preview available</span>}
+                </div>
+              )}
             </div>
           </div>
         </div>

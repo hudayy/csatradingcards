@@ -13,7 +13,7 @@ export const PACK_CONFIGS: Record<PackType, {
     name: 'Challenger Pack',
     subtitle: 'All Rarities',
     flavour: 'Build your roster. Every rarity in the game.',
-    cost: 100,
+    cost: 250,
     allowedRarities: ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'holographic', 'prismatic'],
   },
   elite: {

@@ -680,7 +680,7 @@ export function recordCoinTransaction(userId: number, amount: number, balanceAft
   `).run(userId, amount, balanceAfter, type, description, referenceId ?? null);
 }
 
-export const DAILY_BONUS_AMOUNT = 100;
+export const DAILY_BONUS_AMOUNT = 500;
 
 export function claimDailyBonus(userId: number): { claimed: boolean; amount: number; newBalance: number } {
   const database = getDb();
@@ -995,6 +995,12 @@ export function adminSetCoins(userId: number, amount: number): number {
   const updated = getUserById(userId)!;
   recordCoinTransaction(userId, amount, updated.coins, amount >= 0 ? 'admin_grant' : 'admin_deduct', `Admin: ${amount >= 0 ? 'added' : 'removed'} ${Math.abs(amount)} coins`);
   return updated.coins;
+}
+
+export function adminAddCoinsAll(amount: number): { count: number } {
+  const database = getDb();
+  const result = database.prepare('UPDATE users SET coins = coins + ?').run(amount);
+  return { count: result.changes as number };
 }
 
 export function adminCancelListing(listingId: number): boolean {

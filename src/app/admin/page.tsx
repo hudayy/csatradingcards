@@ -34,7 +34,7 @@ export default function AdminPage() {
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [userCards, setUserCards] = useState<CardData[]>([]);
   const [coinAmount, setCoinAmount] = useState('');
-  const [selfCoinAmount, setSelfCoinAmount] = useState('');
+  const [allCoinAmount, setAllCoinAmount] = useState('');
   const [listings, setListings] = useState<Listing[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -139,11 +139,12 @@ export default function AdminPage() {
     setTimeout(() => setMsg(null), 3000);
   };
 
-  const handleAddCoinsSelf = async () => {
-    const amt = parseInt(selfCoinAmount);
+  const handleAddCoinsAll = async () => {
+    const amt = parseInt(allCoinAmount);
     if (!amt) return;
-    const d = await api({ action: 'add_coins_self', amount: amt });
-    if (d.success) { flash(`Added ${amt.toLocaleString()} coins. Balance: ${d.new_balance.toLocaleString()}`, true); setMe(prev => prev ? { ...prev, coins: d.new_balance } : prev); setSelfCoinAmount(''); }
+    if (!confirm(`Give ${amt.toLocaleString()} coins to ALL users?`)) return;
+    const d = await api({ action: 'add_coins_all', amount: amt });
+    if (d.success) { flash(`Gave ${amt.toLocaleString()} coins to ${d.count} users`, true); setAllCoinAmount(''); }
     else flash(d.error || 'Failed', false);
   };
 
@@ -222,15 +223,15 @@ export default function AdminPage() {
 
       <Msg msg={msg} />
 
-      {/* Self coin tool */}
+      {/* Add coins to everyone */}
       <div style={{ ...cardStyle, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Add coins to yourself:</span>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Add coins to everyone:</span>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {[1000, 5000, 10000, 50000, 100000].map(n => (
-            <button key={n} className="btn btn-sm btn-secondary" onClick={() => setSelfCoinAmount(String(n))}>+{n.toLocaleString()}</button>
+          {[500, 1000, 5000, 10000, 50000].map(n => (
+            <button key={n} className="btn btn-sm btn-secondary" onClick={() => setAllCoinAmount(String(n))}>+{n.toLocaleString()}</button>
           ))}
-          <input type="number" value={selfCoinAmount} onChange={e => setSelfCoinAmount(e.target.value)} placeholder="Custom" onKeyDown={e => e.key === 'Enter' && handleAddCoinsSelf()} style={{ width: 90, padding: '0.3rem 0.6rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
-          <button className="btn btn-primary btn-sm" onClick={handleAddCoinsSelf} disabled={!selfCoinAmount}>Add</button>
+          <input type="number" value={allCoinAmount} onChange={e => setAllCoinAmount(e.target.value)} placeholder="Custom" onKeyDown={e => e.key === 'Enter' && handleAddCoinsAll()} style={{ width: 90, padding: '0.3rem 0.6rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
+          <button className="btn btn-primary btn-sm" onClick={handleAddCoinsAll} disabled={!allCoinAmount}>Give All</button>
         </div>
       </div>
 

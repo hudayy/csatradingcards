@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import {
   getUserByDiscordId, getUserById, isAdmin, isSuperAdmin,
-  setAdminStatus, getSystemStats, getAllUsers, adminSetCoins,
+  setAdminStatus, getSystemStats, getAllUsers, adminSetCoins, adminAddCoinsAll,
   adminCancelListing, adminCancelTrade, adminGetAllListings,
   adminGetAllTrades, adminRemoveCard, getUserCards, searchUsers,
   getFeaturedCardsWithData, setFeaturedCard, clearFeaturedSlot, searchCardsForAdmin,
@@ -88,13 +88,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, new_balance: newBalance });
   }
 
-  if (action === 'add_coins_self') {
+  if (action === 'add_coins_all') {
     const amount = parseInt(body.amount);
     if (!amount || isNaN(amount) || amount < 1 || amount > 10_000_000) {
       return NextResponse.json({ error: 'Invalid amount (1–10,000,000)' }, { status: 400 });
     }
-    const newBalance = adminSetCoins(admin.id, amount);
-    return NextResponse.json({ success: true, new_balance: newBalance });
+    const { count } = adminAddCoinsAll(amount);
+    return NextResponse.json({ success: true, count });
   }
 
   if (action === 'cancel_listing') {

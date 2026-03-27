@@ -1310,6 +1310,7 @@ body {
   border-radius: var(--radius-xl);
   padding: 2rem;
   max-width: 480px; width: 90%;
+  max-height: 90vh; overflow-y: auto;
   animation: modalIn 0.3s ease;
 }
 

@@ -10,6 +10,8 @@ export async function GET(req: NextRequest) {
     minPrice: url.searchParams.get('min_price') ? parseInt(url.searchParams.get('min_price')!) : undefined,
     maxPrice: url.searchParams.get('max_price') ? parseInt(url.searchParams.get('max_price')!) : undefined,
     search: url.searchParams.get('search') || undefined,
+    sort: url.searchParams.get('sort') || undefined,
+    cardType: url.searchParams.get('card_type') || undefined,
   };
 
   const listings = getActiveListings(filters);

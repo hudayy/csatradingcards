@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import TradingCard from '@/components/TradingCard';
-import { FolderOpen, LogIn, Package, Coins, Tag, Flame, ChevronLeft, Layers, ArrowUp, Store, Star } from 'lucide-react';
+import { FolderOpen, LogIn, Package, Coins, Tag, Flame, ChevronLeft, Layers, ArrowUp, Store, Star, Search, SortAsc } from 'lucide-react';
 
 interface InventoryPack {
   id: number;
@@ -74,10 +74,15 @@ function formatRelativeTime(dateStr: string): string {
 
 export default function CollectionPage() {
   const [cards, setCards] = useState<CardData[]>([]);
-  const [allCards, setAllCards] = useState<CardData[]>([]);
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [selectedRarity, setSelectedRarity] = useState('all');
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('rarity');
+  const [cardType, setCardType] = useState('all');
+  const [rarityCounts, setRarityCounts] = useState<Record<string, number>>({});
+  const [totalCards, setTotalCards] = useState(0);
   const [selectedCard, setSelectedCard] = useState<CardData | null>(null);
   const [listPrice, setListPrice] = useState('');
   const [listingStatus, setListingStatus] = useState<string | null>(null);
@@ -111,18 +116,21 @@ export default function CollectionPage() {
   const [addingToShowcase, setAddingToShowcase] = useState(false);
   const [showcaseAddMsg, setShowcaseAddMsg] = useState<string | null>(null);
 
-  const fetchCards = async (rarity?: string) => {
+  const fetchCards = async (opts?: { rarity?: string; search?: string; sort?: string; cardType?: string }) => {
     const params = new URLSearchParams();
-    if (rarity && rarity !== 'all') params.set('rarity', rarity);
+    if (opts?.rarity && opts.rarity !== 'all') params.set('rarity', opts.rarity);
+    if (opts?.search) params.set('search', opts.search);
+    if (opts?.sort && opts.sort !== 'rarity') params.set('sort', opts.sort);
+    if (opts?.cardType && opts.cardType !== 'all') params.set('card_type', opts.cardType);
     const res = await fetch(`/api/collection?${params.toString()}`);
     const data = await res.json();
     if (data.cards) setCards(data.cards);
-  };
-
-  const fetchAllCards = async () => {
-    const res = await fetch('/api/collection');
-    const data = await res.json();
-    if (data.cards) setAllCards(data.cards);
+    if (data.rarityCounts) {
+      const counts: Record<string, number> = {};
+      for (const { rarity, count } of data.rarityCounts) counts[rarity] = count;
+      setRarityCounts(counts);
+    }
+    if (typeof data.totalCards === 'number') setTotalCards(data.totalCards);
   };
 
   const fetchPackData = async () => {
@@ -141,7 +149,7 @@ export default function CollectionPage() {
         if (data.user) {
           setIsLoggedIn(true);
           fetchPackData();
-          fetchAllCards().then(() => setLoading(false));
+          fetchCards({ rarity: 'all' }).then(() => setLoading(false));
         } else {
           setLoading(false);
         }
@@ -150,8 +158,16 @@ export default function CollectionPage() {
   }, []);
 
   useEffect(() => {
-    if (isLoggedIn) fetchCards(selectedRarity);
-  }, [selectedRarity, isLoggedIn]);
+    if (!isLoggedIn) return;
+    fetchCards({ rarity: selectedRarity, search, sort: sortBy, cardType });
+  }, [selectedRarity, search, sortBy, cardType, isLoggedIn]);
+
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setSearch(searchInput), 300);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [searchInput]);
 
   const handleOpenInventoryPack = async (inventoryId: number) => {
     setOpeningId(inventoryId);
@@ -183,7 +199,7 @@ export default function CollectionPage() {
       if (data.success) {
         setListingStatus('Listed successfully!');
         setSelectedCard(null); setListPrice('');
-        fetchCards(selectedRarity); fetchAllCards();
+        fetchCards({ rarity: selectedRarity, search, sort: sortBy, cardType });
         setTimeout(() => setListingStatus(null), 2000);
       } else {
         setListingStatus(data.error || 'Failed to list');
@@ -204,7 +220,7 @@ export default function CollectionPage() {
       if (data.success) {
         setListingStatus('Unlisted successfully!');
         setSelectedCard(null);
-        fetchCards(selectedRarity); fetchAllCards();
+        fetchCards({ rarity: selectedRarity, search, sort: sortBy, cardType });
         setTimeout(() => setListingStatus(null), 2000);
       } else {
         setListingStatus(data.error || 'Failed to unlist');
@@ -227,7 +243,7 @@ export default function CollectionPage() {
         setListingStatus(`Salvaged for ${data.coins} coins!`);
         if (data.new_balance !== undefined) window.dispatchEvent(new CustomEvent('coinsUpdated', { detail: { balance: data.new_balance } }));
         setSelectedCard(null); setSalvageConfirm(false);
-        fetchCards(selectedRarity); fetchAllCards();
+        fetchCards({ rarity: selectedRarity, search, sort: sortBy, cardType });
         setTimeout(() => setListingStatus(null), 2500);
       } else {
         setListingStatus(data.error || 'Salvage failed');
@@ -251,7 +267,7 @@ export default function CollectionPage() {
         if (data.new_balance !== undefined) window.dispatchEvent(new CustomEvent('coinsUpdated', { detail: { balance: data.new_balance } }));
         setBulkSelected(new Set());
         setBulkMode(false);
-        fetchCards(selectedRarity); fetchAllCards();
+        fetchCards({ rarity: selectedRarity, search, sort: sortBy, cardType });
         setTimeout(() => setListingStatus(null), 2500);
       } else {
         setListingStatus(data.error || 'Bulk salvage failed');
@@ -279,7 +295,7 @@ export default function CollectionPage() {
       if (data.success) {
         setListingStatus(`Listed ${data.listed} card${data.listed !== 1 ? 's' : ''}!`);
         setBulkListSelected(new Set()); setBulkListMode(false); setBulkListPrices({});
-        fetchCards(selectedRarity); fetchAllCards();
+        fetchCards({ rarity: selectedRarity, search, sort: sortBy, cardType });
         setTimeout(() => setListingStatus(null), 2500);
       } else { setListingStatus(data.error || 'Bulk listing failed'); }
     } catch { setListingStatus('Network error'); }
@@ -299,7 +315,7 @@ export default function CollectionPage() {
       if (data.success) {
         setTradeUpResult({ card: data.card, traded_rarity: data.traded_rarity, received_rarity: data.received_rarity });
         setTradeUpSelected(new Set()); setTradeUpMode(false);
-        fetchCards(selectedRarity); fetchAllCards();
+        fetchCards({ rarity: selectedRarity, search, sort: sortBy, cardType });
       } else { setListingStatus(data.error || 'Trade-up failed'); setTimeout(() => setListingStatus(null), 3000); }
     } catch { setListingStatus('Network error'); }
     setTradeUpLoading(false);
@@ -346,8 +362,7 @@ export default function CollectionPage() {
     );
   }
 
-  const rarityCount: Record<string, number> = {};
-  allCards.forEach(c => { rarityCount[c.rarity] = (rarityCount[c.rarity] || 0) + 1; });
+  const rarityCount = rarityCounts;
 
   const bulkTotalCoins = Array.from(bulkSelected).reduce((sum, ucId) => {
     const card = cards.find(c => c.user_card_id === ucId);
@@ -372,7 +387,7 @@ export default function CollectionPage() {
     <div className="container">
       <div className="page-header">
         <h1 className="page-title">My Collection</h1>
-        <p className="page-subtitle">{allCards.length} card{allCards.length !== 1 ? 's' : ''} collected</p>
+        <p className="page-subtitle">{totalCards} card{totalCards !== 1 ? 's' : ''} collected</p>
       </div>
 
       {/* Tab switcher */}
@@ -418,6 +433,42 @@ export default function CollectionPage() {
               <ArrowUp size={14} /> {tradeUpMode ? 'Cancel' : 'Trade Up (5→1)'}
             </button>
           </div>
+          {/* Search, sort, card type filters */}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem', alignItems: 'center' }}>
+            <div style={{ position: 'relative', flex: '1', minWidth: 180 }}>
+              <Search size={14} style={{ position: 'absolute', left: '0.6rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+              <input
+                type="text"
+                placeholder="Search by name…"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                style={{ width: '100%', padding: '0.4rem 0.6rem 0.4rem 2rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem', boxSizing: 'border-box' }}
+              />
+            </div>
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              style={{ padding: '0.4rem 0.6rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+            >
+              <option value="rarity">Rarity (High→Low)</option>
+              <option value="name_asc">Name (A–Z)</option>
+              <option value="name_desc">Name (Z–A)</option>
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+            </select>
+            <div style={{ display: 'flex', gap: '0.25rem' }}>
+              {(['all', 'player', 'gm'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setCardType(t)}
+                  className={`btn btn-sm ${cardType === t ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                >
+                  {t === 'all' ? 'All' : t === 'player' ? 'Players' : 'GMs'}
+                </button>
+              ))}
+            </div>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: '0.5rem', marginBottom: '1.5rem' }}>
             {RARITIES.map(r => (
               <div
@@ -432,7 +483,7 @@ export default function CollectionPage() {
               >
                 <div className="stat-label">{r === 'all' ? 'All' : r.charAt(0).toUpperCase() + r.slice(1)}</div>
                 <div className="stat-value" style={{ fontSize: '1.25rem' }}>
-                  {r === 'all' ? allCards.length : (rarityCount[r] || 0)}
+                  {r === 'all' ? totalCards : (rarityCount[r] || 0)}
                 </div>
               </div>
             ))}
@@ -549,7 +600,7 @@ export default function CollectionPage() {
                 <button
                   className="btn btn-secondary"
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
-                  onClick={() => { setRevealCards(null); setFlippedCards(new Set()); fetchPackData(); fetchCards(selectedRarity); fetchAllCards(); }}
+                  onClick={() => { setRevealCards(null); setFlippedCards(new Set()); fetchPackData(); fetchCards({ rarity: selectedRarity, search, sort: sortBy, cardType }); }}
                 >
                   <ChevronLeft size={16} /> Back to Packs
                 </button>

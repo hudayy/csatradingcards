@@ -64,6 +64,8 @@ export default function MarketplacePage() {
   const [loading, setLoading] = useState(true);
   const [selectedRarity, setSelectedRarity] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('');
+  const [marketCardType, setMarketCardType] = useState('all');
   const [buyingId, setBuyingId] = useState<number | null>(null);
   const [unlistingId, setUnlistingId] = useState<number | null>(null);
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -77,6 +79,8 @@ export default function MarketplacePage() {
     const params = new URLSearchParams();
     if (selectedRarity !== 'all') params.set('rarity', selectedRarity);
     if (searchQuery) params.set('search', searchQuery);
+    if (sortBy) params.set('sort', sortBy);
+    if (marketCardType !== 'all') params.set('card_type', marketCardType);
 
     const res = await fetch(`/api/marketplace?${params.toString()}`);
     const data = await res.json();
@@ -105,7 +109,7 @@ export default function MarketplacePage() {
 
   useEffect(() => {
     fetchListings();
-  }, [selectedRarity, searchQuery]);
+  }, [selectedRarity, searchQuery, sortBy, marketCardType]);
 
   const handleBuy = async (listing: ListingData) => {
     if (!isLoggedIn) {
@@ -221,6 +225,33 @@ export default function MarketplacePage() {
                 {r === 'all' ? 'All' : r.charAt(0).toUpperCase() + r.slice(1)}
               </button>
             ))}
+          </div>
+
+          {/* Sort and card type */}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.5rem' }}>
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              style={{ padding: '0.35rem 0.6rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+            >
+              <option value="">Newest Listed</option>
+              <option value="price_asc">Price: Low → High</option>
+              <option value="price_desc">Price: High → Low</option>
+              <option value="rarity">Rarity (High → Low)</option>
+              <option value="name">Name (A–Z)</option>
+            </select>
+            <div style={{ display: 'flex', gap: '0.25rem' }}>
+              {(['all', 'player', 'gm'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setMarketCardType(t)}
+                  className={`btn btn-sm ${marketCardType === t ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ fontSize: '0.75rem', padding: '0.3rem 0.65rem' }}
+                >
+                  {t === 'all' ? 'All' : t === 'player' ? 'Players' : 'GMs'}
+                </button>
+              ))}
+            </div>
           </div>
 
           {loading ? (
@@ -344,6 +375,7 @@ export default function MarketplacePage() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
               <TradingCard
+                size="small"
                 card={{
                   id: selectedListing.card_id,
                   card_type: selectedListing.card_type as 'player' | 'gm',

@@ -414,6 +414,8 @@ export function getUserCards(userId: number, filters?: {
   seasonId?: number;
   tierAbbr?: string;
   search?: string;
+  sort?: 'rarity' | 'name_asc' | 'name_desc' | 'newest' | 'oldest';
+  cardType?: 'player' | 'gm';
 }): UserCardWithCopyCount[] {
   let query = `
     SELECT uc.id as user_card_id, uc.user_id, uc.card_id, uc.acquired_at, uc.source, uc.is_listed,
@@ -448,10 +450,29 @@ export function getUserCards(userId: number, filters?: {
     query += ' AND c.player_name LIKE ?';
     params.push(`%${filters.search}%`);
   }
+  if (filters?.cardType) {
+    query += ' AND c.card_type = ?';
+    params.push(filters.cardType);
+  }
 
-  query += ` ORDER BY CASE c.rarity WHEN 'prismatic' THEN 7 WHEN 'holographic' THEN 6 WHEN 'diamond' THEN 5 WHEN 'platinum' THEN 4 WHEN 'gold' THEN 3 WHEN 'silver' THEN 2 ELSE 1 END DESC, uc.acquired_at DESC`;
+  const orderMap: Record<string, string> = {
+    name_asc: 'c.player_name ASC',
+    name_desc: 'c.player_name DESC',
+    newest: 'uc.acquired_at DESC',
+    oldest: 'uc.acquired_at ASC',
+  };
+  query += ` ORDER BY ${orderMap[filters?.sort ?? ''] ?? `CASE c.rarity WHEN 'prismatic' THEN 7 WHEN 'holographic' THEN 6 WHEN 'diamond' THEN 5 WHEN 'platinum' THEN 4 WHEN 'gold' THEN 3 WHEN 'silver' THEN 2 ELSE 1 END DESC, uc.acquired_at DESC`}`;
 
   return getDb().prepare(query).all(...params) as UserCardWithCopyCount[];
+}
+
+export function getCollectionRarityCounts(userId: number): { rarity: string; count: number }[] {
+  return getDb().prepare(`
+    SELECT c.rarity, COUNT(*) as count
+    FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+    WHERE uc.user_id = ?
+    GROUP BY c.rarity
+  `).all(userId) as { rarity: string; count: number }[];
 }
 
 export function getCardById(cardId: string): Card | undefined {
@@ -534,6 +555,8 @@ export function getActiveListings(filters?: {
   minPrice?: number;
   maxPrice?: number;
   search?: string;
+  sort?: string;
+  cardType?: string;
 }, limit = 50, offset = 0): ListingWithDetails[] {
   const database = getDb();
   // Auto-cancel expired listings
@@ -577,8 +600,18 @@ export function getActiveListings(filters?: {
     query += ' AND c.player_name LIKE ?';
     params.push(`%${filters.search}%`);
   }
+  if (filters?.cardType) {
+    query += ' AND c.card_type = ?';
+    params.push(filters.cardType);
+  }
 
-  query += ' ORDER BY ml.listed_at DESC LIMIT ? OFFSET ?';
+  const sortMap: Record<string, string> = {
+    price_asc: 'ml.price ASC',
+    price_desc: 'ml.price DESC',
+    rarity: `CASE c.rarity WHEN 'prismatic' THEN 7 WHEN 'holographic' THEN 6 WHEN 'diamond' THEN 5 WHEN 'platinum' THEN 4 WHEN 'gold' THEN 3 WHEN 'silver' THEN 2 ELSE 1 END DESC`,
+    name: 'c.player_name ASC',
+  };
+  query += ` ORDER BY ${sortMap[filters?.sort ?? ''] ?? 'ml.listed_at DESC'} LIMIT ? OFFSET ?`;
   params.push(limit, offset);
 
   return database.prepare(query).all(...params) as ListingWithDetails[];

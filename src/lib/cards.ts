@@ -100,13 +100,19 @@ export async function getPlayerPool(): Promise<PlayerPool[]> {
   const season = await getCurrentSeason();
   if (!season) throw new Error('No current season found');
 
-  // Fetch players, members, franchises, and franchise details concurrently
-  const [players, allMembers, franchises, franchiseDetails] = await Promise.all([
+  // Fetch players, members, franchises, and franchise details concurrently.
+  // Non-critical calls (members, franchises) degrade gracefully on partial failure.
+  const [playersResult, allMembersResult, franchisesResult, franchiseDetailsResult] = await Promise.allSettled([
     getLeaguePlayers({ seasonId: season.id, active: true }),
     import('./csa-api').then(m => m.getMembers()),
     getFranchises(),
     getFranchiseDetails(season.id),
   ]);
+  if (playersResult.status === 'rejected') throw playersResult.reason;
+  const players = playersResult.value;
+  const allMembers = allMembersResult.status === 'fulfilled' ? allMembersResult.value : [];
+  const franchises = franchisesResult.status === 'fulfilled' ? franchisesResult.value : [];
+  const franchiseDetails = franchiseDetailsResult.status === 'fulfilled' ? franchiseDetailsResult.value : [];
 
   const franchiseMap = new Map(franchises.map(f => [f.id, f]));
   const franchiseConfMap = new Map(franchiseDetails.map(fd => [fd.Franchise.id, fd.conf]));

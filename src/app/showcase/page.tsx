@@ -63,11 +63,12 @@ export default async function ShowcasePage() {
 
     if (entry.player.Franchise?.id != null) usedFranchises.add(entry.player.Franchise.id);
 
-    const { player, stats, franchise } = entry;
+    const { player, franchise } = entry;
     const mult = RARITY_STAT_MULTIPLIER[rarity];
     const franchiseLogo = franchise?.logo
       ? (franchise.logo.startsWith('http') ? franchise.logo : `https://api.playcsa.com${franchise.logo}`)
       : null;
+    const sal = player.active_salary;
 
     return {
       id: `showcase-${rarity}-${player.Player.csa_id}`,
@@ -81,10 +82,10 @@ export default async function ShowcasePage() {
       tier_name: tierName,
       tier_abbr: tierName.charAt(0),
       rarity,
-      stat_gpg:    Math.round((stats?.gpg    ?? 0.7) * mult * 1000) / 1000,
-      stat_apg:    Math.round((stats?.apg    ?? 0.5) * mult * 1000) / 1000,
-      stat_svpg:   Math.round((stats?.svpg   ?? 1.0) * mult * 1000) / 1000,
-      stat_win_pct: Math.round(Math.min((stats?.win_pct ?? 0.5) * mult, 1) * 1000) / 1000,
+      stat_gpg:    Math.round(((sal / 5000) * 0.5) * mult * 1000) / 1000,
+      stat_apg:    Math.round(((sal / 5000) * 0.4) * mult * 1000) / 1000,
+      stat_svpg:   Math.round(((sal / 5000) * 0.8) * mult * 1000) / 1000,
+      stat_win_pct: Math.round(Math.min(0.5 * mult, 1) * 1000) / 1000,
       salary: player.active_salary,
       overall_rating: Math.round(Math.min(Math.max((player.active_salary / 200) * mult, 30), 99)),
       season_number: 3,

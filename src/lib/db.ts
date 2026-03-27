@@ -475,11 +475,17 @@ export interface MarketplaceListing {
 export type ListingWithDetails = MarketplaceListing & Card & { seller_name: string; seller_avatar: string | null };
 
 export function createListing(sellerId: number, userCardId: number, cardId: string, price: number): number {
-  getDb().prepare('UPDATE user_cards SET is_listed = 1 WHERE id = ?').run(userCardId);
-  const result = getDb().prepare(`
-    INSERT INTO marketplace_listings (seller_id, user_card_id, card_id, price) VALUES (?, ?, ?, ?)
-  `).run(sellerId, userCardId, cardId, price);
-  return result.lastInsertRowid as number;
+  const db = getDb();
+  let listingId!: number;
+  db.transaction(() => {
+    const card = db.prepare('SELECT is_listed FROM user_cards WHERE id = ? AND user_id = ?').get(userCardId, sellerId) as { is_listed: number } | undefined;
+    if (!card) throw new Error('Card not found');
+    if (card.is_listed) throw new Error('Card is already listed');
+    db.prepare('UPDATE user_cards SET is_listed = 1 WHERE id = ?').run(userCardId);
+    const result = db.prepare('INSERT INTO marketplace_listings (seller_id, user_card_id, card_id, price) VALUES (?, ?, ?, ?)').run(sellerId, userCardId, cardId, price);
+    listingId = result.lastInsertRowid as number;
+  })();
+  return listingId;
 }
 
 export function getActiveListings(filters?: {
@@ -629,11 +635,15 @@ export function addToPackInventory(userId: number, packType: string): void {
 /** Removes one inventory entry and returns its pack_type, or null if not found/not owned. */
 export function consumeInventoryPack(userId: number, inventoryId: number): string | null {
   const db = getDb();
-  const row = db.prepare('SELECT id, pack_type FROM pack_inventory WHERE id = ? AND user_id = ?')
-    .get(inventoryId, userId) as { id: number; pack_type: string } | undefined;
-  if (!row) return null;
-  db.prepare('DELETE FROM pack_inventory WHERE id = ?').run(inventoryId);
-  return row.pack_type;
+  let packType: string | null = null;
+  db.transaction(() => {
+    const row = db.prepare('SELECT id, pack_type FROM pack_inventory WHERE id = ? AND user_id = ?')
+      .get(inventoryId, userId) as { id: number; pack_type: string } | undefined;
+    if (!row) return;
+    const deleted = db.prepare('DELETE FROM pack_inventory WHERE id = ? AND user_id = ?').run(inventoryId, userId);
+    if (deleted.changes > 0) packType = row.pack_type;
+  })();
+  return packType;
 }
 
 const PRESTIGE_GRANT_CSA_ID = 420;

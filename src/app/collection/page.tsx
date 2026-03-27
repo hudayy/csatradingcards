@@ -127,7 +127,7 @@ export default function CollectionPage() {
         if (data.user) {
           setIsLoggedIn(true);
           fetchPackData();
-          Promise.all([fetchCards(), fetchAllCards()]).then(() => setLoading(false));
+          fetchAllCards().then(() => setLoading(false));
         } else {
           setLoading(false);
         }

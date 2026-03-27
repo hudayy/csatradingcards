@@ -33,8 +33,6 @@ export default function PacksPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [csaId, setCsaId] = useState<number | null>(null);
-  const [isUserAdmin, setIsUserAdmin] = useState(false);
-  const [devMode, setDevMode] = useState(false);
   useEffect(() => {
     Promise.all([
       fetch('/api/auth/me').then(r => r.json()),
@@ -43,7 +41,6 @@ export default function PacksPage() {
       if (authData.user) {
         setIsLoggedIn(true);
         setCsaId(authData.user.csa_id ?? null);
-        setIsUserAdmin(!!authData.user.is_admin);
         if (packData.packs_remaining !== undefined) {
           setPacksRemaining(packData.packs_remaining);
         }
@@ -53,7 +50,7 @@ export default function PacksPage() {
   }, []);
 
   const openPack = async () => {
-    if (isOpening || (!devMode && packsRemaining !== null && packsRemaining <= 0)) return;
+    if (isOpening || (packsRemaining !== null && packsRemaining <= 0)) return;
 
     setIsOpening(true);
     setRevealedCards([]);
@@ -61,8 +58,7 @@ export default function PacksPage() {
     setError(null);
 
     try {
-      const url = devMode ? '/api/packs/open?dev=1' : '/api/packs/open';
-      const res = await fetch(url, { method: 'POST' });
+      const res = await fetch('/api/packs/open', { method: 'POST' });
       const data = await res.json();
 
       if (!res.ok) {
@@ -153,41 +149,20 @@ export default function PacksPage() {
           </div>
 
           <div className="pack-remaining">
-            {devMode ? (
-              <><strong style={{ color: 'var(--accent-green)' }}>∞</strong> packs <span style={{ color: 'var(--accent-green)', fontSize: '0.75rem' }}>(DEV MODE)</span></>
-            ) : packsRemaining !== null ? (
+            {packsRemaining !== null ? (
               <><strong>{packsRemaining}</strong> free pack{packsRemaining !== 1 ? 's' : ''} remaining today</>
             ) : (
               'Loading...'
             )}
           </div>
 
-          {isUserAdmin && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={devMode}
-                  onChange={e => setDevMode(e.target.checked)}
-                  style={{ accentColor: 'var(--accent-green)', width: 16, height: 16, cursor: 'pointer' }}
-                />
-                Dev Mode
-              </label>
-              {devMode && (
-                <a href="/admin" className="btn btn-sm btn-secondary" style={{ fontSize: '0.75rem' }}>
-                  Admin Panel →
-                </a>
-              )}
-            </div>
-          )}
-
           <button
             className="btn btn-primary"
             onClick={openPack}
-            disabled={isOpening || (!devMode && packsRemaining !== null && packsRemaining <= 0)}
+            disabled={isOpening || (packsRemaining !== null && packsRemaining <= 0)}
             style={{ fontSize: '1.1rem', padding: '1rem 2.5rem' }}
           >
-            {isOpening ? <><Sparkles size={18} /> Opening...</> : (!devMode && packsRemaining === 0) ? <><Clock size={18} /> Come Back Tomorrow</> : <><Package size={18} /> Open Free Pack</>}
+            {isOpening ? <><Sparkles size={18} /> Opening...</> : packsRemaining === 0 ? <><Clock size={18} /> Come Back Tomorrow</> : <><Package size={18} /> Open Free Pack</>}
           </button>
         </div>
       ) : (
@@ -242,17 +217,15 @@ export default function PacksPage() {
               onClick={() => {
                 setRevealedCards([]);
                 setFlippedCards(new Set());
-                if (devMode || (packsRemaining && packsRemaining > 0)) {
+                if (packsRemaining && packsRemaining > 0) {
                   openPack();
                 }
               }}
-              disabled={!devMode && packsRemaining !== null && packsRemaining <= 0}
+              disabled={packsRemaining !== null && packsRemaining <= 0}
             >
-              {devMode
-                ? <><Package size={18} /> Open Another (∞)</>
-                : packsRemaining && packsRemaining > 0
-                  ? <><Package size={18} /> Open Another ({packsRemaining} left)</>
-                  : <><Clock size={18} /> No Packs Remaining</>}
+              {packsRemaining && packsRemaining > 0
+                ? <><Package size={18} /> Open Another ({packsRemaining} left)</>
+                : <><Clock size={18} /> No Packs Remaining</>}
             </button>
             <a href="/collection" className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
               <FolderOpen size={18} /> View Collection

@@ -10,10 +10,8 @@ interface Stats { totalUsers: number; totalCards: number; totalListings: number;
 interface Listing { id: number; player_name: string; rarity: string; franchise_name: string | null; price: number; seller_name: string; seller_csa_name: string | null; listed_at: string; }
 interface Trade { id: number; sender_name: string; sender_csa_name: string | null; receiver_name: string; receiver_csa_name: string | null; sender_coins: number; receiver_coins: number; created_at: string; }
 interface CardData { id: string; user_card_id: number; player_name: string; rarity: string; franchise_name: string | null; season_number: number; is_listed: number; }
-interface FeaturedConfig { position: number; csa_id: number; rarity: string; }
 interface FeaturedCardData { id: string; card_type?: 'player' | 'gm'; player_name: string; player_avatar_url: string | null; franchise_name: string | null; franchise_abbr: string | null; franchise_logo_url?: string | null; franchise_color?: string | null; franchise_conf?: string | null; tier_name: string | null; tier_abbr: string | null; rarity: string; stat_gpg: number; stat_apg: number; stat_svpg: number; stat_win_pct: number; salary: number; overall_rating: number; season_number: number; }
-
-const RARITIES = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'holographic', 'prismatic'];
+interface FeaturedSlot { cardData: FeaturedCardData | null; search: string; results: FeaturedCardData[]; showResults: boolean; saving: boolean; }
 
 type Tab = 'dashboard' | 'users' | 'marketplace' | 'trades';
 
@@ -40,14 +38,9 @@ export default function AdminPage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
-  const [featuredConfig, setFeaturedConfig] = useState<FeaturedConfig[]>([
-    { position: 1, csa_id: 420, rarity: 'gold' },
-    { position: 2, csa_id: 121, rarity: 'prismatic' },
-    { position: 3, csa_id: 314, rarity: 'bronze' },
-  ]);
-  const [featuredPreview, setFeaturedPreview] = useState<FeaturedCardData[]>([]);
-  const [featuredPreviewLoading, setFeaturedPreviewLoading] = useState(false);
-  const [savingSlot, setSavingSlot] = useState<number | null>(null);
+  const emptySlot = (): FeaturedSlot => ({ cardData: null, search: '', results: [], showResults: false, saving: false });
+  const [featuredSlots, setFeaturedSlots] = useState<FeaturedSlot[]>([emptySlot(), emptySlot(), emptySlot()]);
+  const searchTimers = useRef<(ReturnType<typeof setTimeout> | null)[]>([null, null, null]);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -59,7 +52,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!me) return;
-    if (tab === 'dashboard') { loadStats(); loadFeaturedConfig(); loadFeaturedPreview(); }
+    if (tab === 'dashboard') { loadStats(); loadFeaturedConfig(); }
     if (tab === 'users') loadUsers('');
     if (tab === 'marketplace') loadListings();
     if (tab === 'trades') loadTrades();
@@ -83,21 +76,45 @@ export default function AdminPage() {
 
   const loadFeaturedConfig = async () => {
     const d = await fetch('/api/admin?action=featured').then(r => r.json());
-    if (d.featured) setFeaturedConfig(d.featured);
+    if (d.featured) {
+      setFeaturedSlots(prev => prev.map((s, i) => {
+        const saved = (d.featured as (FeaturedCardData & { position: number })[]).find(f => f.position === i + 1);
+        return saved ? { ...s, cardData: saved } : s;
+      }));
+    }
   };
 
-  const loadFeaturedPreview = async () => {
-    setFeaturedPreviewLoading(true);
-    const d = await fetch('/api/featured').then(r => r.json()).catch(() => ({}));
-    setFeaturedPreview(d.cards || []);
-    setFeaturedPreviewLoading(false);
+  const updateSlot = (idx: number, patch: Partial<FeaturedSlot>) =>
+    setFeaturedSlots(prev => prev.map((s, i) => i === idx ? { ...s, ...patch } : s));
+
+  const handleSlotSearch = (idx: number, query: string) => {
+    updateSlot(idx, { search: query, showResults: !!query });
+    if (searchTimers.current[idx]) clearTimeout(searchTimers.current[idx]!);
+    if (!query.trim()) { updateSlot(idx, { results: [] }); return; }
+    searchTimers.current[idx] = setTimeout(async () => {
+      const d = await fetch(`/api/admin?action=search_cards&q=${encodeURIComponent(query)}`).then(r => r.json());
+      updateSlot(idx, { results: d.cards || [] });
+    }, 250);
   };
 
-  const handleSaveFeaturedSlot = async (slot: FeaturedConfig) => {
-    setSavingSlot(slot.position);
-    const d = await api({ action: 'set_featured', position: slot.position, csa_id: slot.csa_id, rarity: slot.rarity });
-    setSavingSlot(null);
-    if (d.success) { flash(`Slot ${slot.position} updated`, true); loadFeaturedPreview(); }
+  const handleSlotSelect = (idx: number, card: FeaturedCardData) =>
+    updateSlot(idx, { cardData: card, search: '', results: [], showResults: false });
+
+  const handleSaveFeaturedSlot = async (idx: number) => {
+    const slot = featuredSlots[idx];
+    if (!slot.cardData) return;
+    updateSlot(idx, { saving: true });
+    const d = await api({ action: 'set_featured', position: idx + 1, card_id: slot.cardData.id });
+    updateSlot(idx, { saving: false });
+    if (d.success) flash(`Slot ${idx + 1} updated`, true);
+    else flash(d.error || 'Failed', false);
+  };
+
+  const handleClearFeaturedSlot = async (idx: number) => {
+    updateSlot(idx, { saving: true });
+    const d = await api({ action: 'clear_featured', position: idx + 1 });
+    updateSlot(idx, { saving: false });
+    if (d.success) { updateSlot(idx, { cardData: null }); flash(`Slot ${idx + 1} cleared`, true); }
     else flash(d.error || 'Failed', false);
   };
   const loadUsers = async (q: string) => {
@@ -289,46 +306,67 @@ export default function AdminPage() {
             <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
               <Star size={14} style={{ color: 'var(--accent-gold)' }} /> Featured Cards (Home Page)
             </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem' }}>
-              {featuredConfig.map(slot => (
-                <div key={slot.position} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 700, minWidth: 48 }}>Slot {slot.position}</span>
-                  <input
-                    type="number"
-                    placeholder="CSA ID"
-                    value={slot.csa_id}
-                    onChange={e => setFeaturedConfig(prev => prev.map(s => s.position === slot.position ? { ...s, csa_id: parseInt(e.target.value) || 0 } : s))}
-                    style={{ width: 90, padding: '0.35rem 0.6rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
-                  />
-                  <select
-                    value={slot.rarity}
-                    onChange={e => setFeaturedConfig(prev => prev.map(s => s.position === slot.position ? { ...s, rarity: e.target.value } : s))}
-                    style={{ padding: '0.35rem 0.6rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem', textTransform: 'capitalize' }}
-                  >
-                    {RARITIES.map(r => <option key={r} value={r} style={{ textTransform: 'capitalize' }}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
-                  </select>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() => handleSaveFeaturedSlot(slot)}
-                    disabled={savingSlot === slot.position || !slot.csa_id}
-                  >
-                    {savingSlot === slot.position ? 'Saving…' : 'Save'}
-                  </button>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.25rem' }}>
+              {featuredSlots.map((slot, idx) => (
+                <div key={idx} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Slot {idx + 1}</div>
+
+                  {/* Search box */}
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      placeholder="Search by player name…"
+                      value={slot.search}
+                      onChange={e => handleSlotSearch(idx, e.target.value)}
+                      onFocus={() => slot.results.length > 0 && updateSlot(idx, { showResults: true })}
+                      onBlur={() => setTimeout(() => updateSlot(idx, { showResults: false }), 150)}
+                      style={{ width: '100%', padding: '0.4rem 0.65rem', background: 'var(--bg-primary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem', boxSizing: 'border-box' }}
+                    />
+                    {slot.showResults && slot.results.length > 0 && (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', zIndex: 50, maxHeight: 220, overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>
+                        {slot.results.map(card => (
+                          <div
+                            key={card.id}
+                            onMouseDown={() => handleSlotSelect(idx, card)}
+                            style={{ padding: '0.5rem 0.75rem', cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                          >
+                            {card.player_avatar_url && <img src={card.player_avatar_url} alt="" style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover' }} />}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{card.player_name}</div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{card.rarity}{card.franchise_name ? ` · ${card.franchise_name}` : ''}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card preview */}
+                  {slot.cardData ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                      <TradingCard card={slot.cardData} size="small" />
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                        {slot.cardData.player_name} · <span style={{ textTransform: 'capitalize' }}>{slot.cardData.rarity}</span>
+                        {slot.cardData.card_type === 'gm' && <span style={{ color: 'var(--accent-gold)', marginLeft: 4 }}>GM</span>}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', padding: '1.5rem 0' }}>No card selected</div>
+                  )}
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => handleSaveFeaturedSlot(idx)} disabled={!slot.cardData || slot.saving}>
+                      {slot.saving ? 'Saving…' : 'Save'}
+                    </button>
+                    {slot.cardData && (
+                      <button className="btn btn-danger btn-sm" onClick={() => handleClearFeaturedSlot(idx)} disabled={slot.saving}>
+                        Clear
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
-            </div>
-            <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '1rem' }}>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
-                {featuredPreviewLoading ? 'Loading preview…' : 'Preview (current live cards):'}
-              </div>
-              {!featuredPreviewLoading && (
-                <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-                  {featuredPreview.map((card, i) => (
-                    <TradingCard key={i} card={card} size="small" />
-                  ))}
-                  {featuredPreview.length === 0 && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No preview available</span>}
-                </div>
-              )}
             </div>
           </div>
         </div>

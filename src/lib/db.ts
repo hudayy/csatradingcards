@@ -168,8 +168,8 @@ function initializeSchema(db: Database.Database) {
 
     CREATE TABLE IF NOT EXISTS featured_cards (
       position INTEGER PRIMARY KEY CHECK(position BETWEEN 1 AND 3),
-      csa_id INTEGER NOT NULL,
-      rarity TEXT NOT NULL
+      card_id TEXT,
+      FOREIGN KEY (card_id) REFERENCES cards(id)
     );
   `);
 
@@ -238,12 +238,15 @@ function initializeSchema(db: Database.Database) {
     db.pragma('foreign_keys = ON');
   }
 
-  // Seed featured cards if empty
-  const featuredCount = (db.prepare('SELECT COUNT(*) as n FROM featured_cards').get() as { n: number }).n;
-  if (featuredCount === 0) {
-    for (const [pos, csaId, rarity] of [[1, 420, 'gold'], [2, 121, 'prismatic'], [3, 314, 'bronze']] as [number, number, string][]) {
-      db.prepare('INSERT OR IGNORE INTO featured_cards (position, csa_id, rarity) VALUES (?, ?, ?)').run(pos, csaId, rarity);
-    }
+  // Migrate featured_cards from old csa_id+rarity schema to card_id schema
+  const featuredInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='featured_cards'").get() as { sql: string } | undefined;
+  if (featuredInfo?.sql.includes('csa_id')) {
+    db.exec(`DROP TABLE featured_cards;
+      CREATE TABLE featured_cards (
+        position INTEGER PRIMARY KEY CHECK(position BETWEEN 1 AND 3),
+        card_id TEXT,
+        FOREIGN KEY (card_id) REFERENCES cards(id)
+      );`);
   }
 
   db.exec(`
@@ -1383,18 +1386,53 @@ export function getPublicUserProfile(userId: number): {
 
 // ---- Featured cards config ----
 
-export interface FeaturedCardConfig {
-  position: number;
-  csa_id: number;
-  rarity: string;
+export type FeaturedCardWithData = Pick<Card,
+  'id' | 'player_name' | 'player_avatar_url' | 'franchise_name' | 'franchise_abbr' |
+  'franchise_logo_url' | 'franchise_color' | 'franchise_conf' | 'tier_name' | 'tier_abbr' |
+  'rarity' | 'card_type' | 'stat_gpg' | 'stat_apg' | 'stat_svpg' | 'stat_win_pct' |
+  'salary' | 'overall_rating' | 'season_number'
+> & { position: number };
+
+export function getFeaturedCardsWithData(): FeaturedCardWithData[] {
+  return getDb().prepare(`
+    SELECT fc.position,
+      c.id, c.player_name, c.player_avatar_url, c.franchise_name, c.franchise_abbr,
+      c.franchise_logo_url, c.franchise_color, c.franchise_conf, c.tier_name, c.tier_abbr,
+      c.rarity, c.card_type, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct,
+      c.salary, c.overall_rating, c.season_number
+    FROM featured_cards fc
+    JOIN cards c ON fc.card_id = c.id
+    ORDER BY fc.position
+  `).all() as FeaturedCardWithData[];
 }
 
-export function getFeaturedCards(): FeaturedCardConfig[] {
-  return getDb().prepare('SELECT position, csa_id, rarity FROM featured_cards ORDER BY position').all() as FeaturedCardConfig[];
-}
-
-export function setFeaturedCard(position: number, csaId: number, rarity: string): void {
+export function setFeaturedCard(position: number, cardId: string): void {
   getDb().prepare(
-    'INSERT INTO featured_cards (position, csa_id, rarity) VALUES (?, ?, ?) ON CONFLICT(position) DO UPDATE SET csa_id = excluded.csa_id, rarity = excluded.rarity'
-  ).run(position, csaId, rarity);
+    'INSERT INTO featured_cards (position, card_id) VALUES (?, ?) ON CONFLICT(position) DO UPDATE SET card_id = excluded.card_id'
+  ).run(position, cardId);
+}
+
+export function clearFeaturedSlot(position: number): void {
+  getDb().prepare('DELETE FROM featured_cards WHERE position = ?').run(position);
+}
+
+export function searchCardsForAdmin(query: string, limit = 20): Pick<Card,
+  'id' | 'player_name' | 'player_avatar_url' | 'franchise_name' | 'franchise_abbr' |
+  'franchise_logo_url' | 'franchise_color' | 'franchise_conf' | 'tier_name' | 'tier_abbr' |
+  'rarity' | 'card_type' | 'stat_gpg' | 'stat_apg' | 'stat_svpg' | 'stat_win_pct' |
+  'salary' | 'overall_rating' | 'season_number'
+>[] {
+  return getDb().prepare(`
+    SELECT id, player_name, player_avatar_url, franchise_name, franchise_abbr,
+      franchise_logo_url, franchise_color, franchise_conf, tier_name, tier_abbr,
+      rarity, card_type, stat_gpg, stat_apg, stat_svpg, stat_win_pct,
+      salary, overall_rating, season_number
+    FROM cards
+    WHERE player_name LIKE ?
+    ORDER BY
+      CASE rarity WHEN 'prismatic' THEN 7 WHEN 'holographic' THEN 6 WHEN 'diamond' THEN 5
+        WHEN 'platinum' THEN 4 WHEN 'gold' THEN 3 WHEN 'silver' THEN 2 ELSE 1 END DESC,
+      player_name
+    LIMIT ?
+  `).all(`%${query}%`, limit) as any[];
 }

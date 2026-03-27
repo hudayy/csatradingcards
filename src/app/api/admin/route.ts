@@ -5,7 +5,7 @@ import {
   setAdminStatus, getSystemStats, getAllUsers, adminSetCoins,
   adminCancelListing, adminCancelTrade, adminGetAllListings,
   adminGetAllTrades, adminRemoveCard, getUserCards, searchUsers,
-  getFeaturedCards, setFeaturedCard,
+  getFeaturedCardsWithData, setFeaturedCard, clearFeaturedSlot, searchCardsForAdmin,
 } from '@/lib/db';
 
 async function getAdminUser(requiredSuperAdmin = false) {
@@ -43,7 +43,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ cards: getUserCards(userId) });
   }
   if (action === 'featured') {
-    return NextResponse.json({ featured: getFeaturedCards() });
+    return NextResponse.json({ featured: getFeaturedCardsWithData() });
+  }
+  if (action === 'search_cards') {
+    const q = req.nextUrl.searchParams.get('q') || '';
+    if (!q.trim()) return NextResponse.json({ cards: [] });
+    return NextResponse.json({ cards: searchCardsForAdmin(q, 15) });
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
@@ -119,14 +124,19 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === 'set_featured') {
-    const { position, csa_id, rarity } = body;
+    const { position, card_id } = body;
     const pos = parseInt(position);
-    const csaId = parseInt(csa_id);
-    const RARITIES = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'holographic', 'prismatic'];
     if (isNaN(pos) || pos < 1 || pos > 3) return NextResponse.json({ error: 'Position must be 1–3' }, { status: 400 });
-    if (isNaN(csaId) || csaId < 1) return NextResponse.json({ error: 'Invalid CSA ID' }, { status: 400 });
-    if (!RARITIES.includes(rarity)) return NextResponse.json({ error: 'Invalid rarity' }, { status: 400 });
-    setFeaturedCard(pos, csaId, rarity);
+    if (!card_id || typeof card_id !== 'string') return NextResponse.json({ error: 'Invalid card_id' }, { status: 400 });
+    setFeaturedCard(pos, card_id);
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === 'clear_featured') {
+    const { position } = body;
+    const pos = parseInt(position);
+    if (isNaN(pos) || pos < 1 || pos > 3) return NextResponse.json({ error: 'Position must be 1–3' }, { status: 400 });
+    clearFeaturedSlot(pos);
     return NextResponse.json({ success: true });
   }
 

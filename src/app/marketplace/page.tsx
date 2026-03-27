@@ -25,6 +25,7 @@ interface ListingData {
   tier_abbr: string | null;
   rarity: string;
   card_type: string;
+  copy_count: number;
   stat_gpg: number;
   stat_apg: number;
   stat_svpg: number;
@@ -70,6 +71,7 @@ export default function MarketplacePage() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [selectedListing, setSelectedListing] = useState<ListingData | null>(null);
 
   const fetchListings = async () => {
     const params = new URLSearchParams();
@@ -240,7 +242,7 @@ export default function MarketplacePage() {
           ) : (
             <div className="card-grid">
               {listings.map(listing => (
-                <div key={listing.id} className="listing-card">
+                <div key={listing.id} className="listing-card" onClick={() => setSelectedListing(listing)} style={{ cursor: 'pointer' }}>
                   <TradingCard
                     card={{
                       id: listing.card_id,
@@ -275,11 +277,11 @@ export default function MarketplacePage() {
                     </div>
                   )}
                   {listing.seller_id === currentUserId ? (
-                    <button className="btn btn-danger btn-sm" onClick={() => handleUnlist(listing)} disabled={unlistingId === listing.id} style={{ width: '100%', justifyContent: 'center' }}>
+                    <button className="btn btn-danger btn-sm" onClick={e => { e.stopPropagation(); handleUnlist(listing); }} disabled={unlistingId === listing.id} style={{ width: '100%', justifyContent: 'center' }}>
                       {unlistingId === listing.id ? 'Removing...' : 'Remove Listing'}
                     </button>
                   ) : (
-                    <button className="btn btn-primary btn-sm" onClick={() => handleBuy(listing)} disabled={buyingId === listing.id} style={{ width: '100%', justifyContent: 'center' }}>
+                    <button className="btn btn-primary btn-sm" onClick={e => { e.stopPropagation(); handleBuy(listing); }} disabled={buyingId === listing.id} style={{ width: '100%', justifyContent: 'center' }}>
                       {buyingId === listing.id ? 'Buying...' : 'Buy Now'}
                     </button>
                   )}
@@ -330,6 +332,66 @@ export default function MarketplacePage() {
             ))}
           </div>
         )
+      )}
+
+      {/* Card detail modal */}
+      {selectedListing && (
+        <div className="modal-overlay" onClick={() => setSelectedListing(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">{selectedListing.player_name}</h3>
+              <button className="modal-close" onClick={() => setSelectedListing(null)}>×</button>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
+              <TradingCard
+                card={{
+                  id: selectedListing.card_id,
+                  card_type: selectedListing.card_type as 'player' | 'gm',
+                  player_name: selectedListing.player_name,
+                  player_avatar_url: selectedListing.player_avatar_url,
+                  franchise_name: selectedListing.franchise_name,
+                  franchise_abbr: selectedListing.franchise_abbr,
+                  franchise_logo_url: selectedListing.franchise_logo_url,
+                  franchise_color: selectedListing.franchise_color,
+                  franchise_conf: selectedListing.franchise_conf,
+                  tier_name: selectedListing.tier_name,
+                  tier_abbr: selectedListing.tier_abbr,
+                  rarity: selectedListing.rarity,
+                  stat_gpg: selectedListing.stat_gpg,
+                  stat_apg: selectedListing.stat_apg,
+                  stat_svpg: selectedListing.stat_svpg,
+                  stat_win_pct: selectedListing.stat_win_pct,
+                  salary: selectedListing.salary,
+                  overall_rating: selectedListing.overall_rating,
+                  season_number: selectedListing.season_number,
+                }}
+              />
+            </div>
+            <div style={{ textAlign: 'center', marginBottom: '1.25rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              <span style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '0.3rem 0.75rem' }}>
+                {selectedListing.copy_count === 1 ? '✦ Only 1 copy exists' : `${selectedListing.copy_count} copies exist across all collections`}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontWeight: 700, fontSize: '1.1rem', color: 'var(--accent-gold)', marginBottom: '0.5rem' }}>
+              <Coins size={18} /> {selectedListing.price.toLocaleString()}
+            </div>
+            <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+              Listed by <a href={`/u/${selectedListing.seller_id}`} style={{ color: 'var(--accent-blue)', textDecoration: 'none' }}>{selectedListing.seller_name}</a>
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-secondary" onClick={() => setSelectedListing(null)}>Close</button>
+              {selectedListing.seller_id === currentUserId ? (
+                <button className="btn btn-danger" onClick={() => { handleUnlist(selectedListing); setSelectedListing(null); }} disabled={unlistingId === selectedListing.id}>
+                  {unlistingId === selectedListing.id ? 'Removing...' : 'Remove Listing'}
+                </button>
+              ) : (
+                <button className="btn btn-primary" onClick={() => { handleBuy(selectedListing); setSelectedListing(null); }} disabled={buyingId === selectedListing.id}>
+                  {buyingId === selectedListing.id ? 'Buying...' : 'Buy Now'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -531,7 +531,8 @@ export function getActiveListings(filters?: {
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
       c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
       c.rarity, c.card_type, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at,
-      u.discord_username as seller_name, u.avatar_url as seller_avatar
+      (SELECT COUNT(*) FROM user_cards WHERE card_id = c.id) as copy_count,
+      COALESCE(u.csa_name, u.discord_username) as seller_name, u.avatar_url as seller_avatar
     FROM marketplace_listings ml
     JOIN cards c ON ml.card_id = c.id
     JOIN users u ON ml.seller_id = u.id
@@ -1062,8 +1063,8 @@ export function getTradesForUser(userId: number): TradeWithDetails[] {
 
   const trades = database.prepare(`
     SELECT t.*,
-      su.discord_username as sender_name, su.avatar_url as sender_avatar,
-      ru.discord_username as receiver_name, ru.avatar_url as receiver_avatar
+      COALESCE(su.csa_name, su.discord_username) as sender_name, su.avatar_url as sender_avatar,
+      COALESCE(ru.csa_name, ru.discord_username) as receiver_name, ru.avatar_url as receiver_avatar
     FROM trades t
     JOIN users su ON t.sender_id = su.id
     JOIN users ru ON t.receiver_id = ru.id
@@ -1222,7 +1223,7 @@ export function getMarketplaceHistory(userId: number, limit = 50): MarketplaceHi
   return getDb().prepare(`
     SELECT ml.id, ml.card_id, ml.price, ml.status, ml.listed_at, ml.sold_at, ml.expires_at,
       CASE WHEN ml.seller_id = ? THEN 'seller' ELSE 'buyer' END as role,
-      CASE WHEN ml.seller_id = ? THEN bu.discord_username ELSE su.discord_username END as other_user,
+      CASE WHEN ml.seller_id = ? THEN COALESCE(bu.csa_name, bu.discord_username) ELSE COALESCE(su.csa_name, su.discord_username) END as other_user,
       CASE WHEN ml.seller_id = ? THEN bu.avatar_url ELSE su.avatar_url END as other_avatar,
       c.player_name, c.rarity, c.franchise_name, c.player_avatar_url
     FROM marketplace_listings ml

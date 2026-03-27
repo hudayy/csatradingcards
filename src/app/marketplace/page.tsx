@@ -17,6 +17,9 @@ interface ListingData {
   player_avatar_url: string | null;
   franchise_name: string | null;
   franchise_abbr: string | null;
+  franchise_logo_url: string | null;
+  franchise_color: string | null;
+  franchise_conf: string | null;
   tier_name: string | null;
   tier_abbr: string | null;
   rarity: string;
@@ -187,6 +190,9 @@ export default function MarketplacePage() {
                   player_avatar_url: listing.player_avatar_url,
                   franchise_name: listing.franchise_name,
                   franchise_abbr: listing.franchise_abbr,
+                  franchise_logo_url: listing.franchise_logo_url,
+                  franchise_color: listing.franchise_color,
+                  franchise_conf: listing.franchise_conf,
                   tier_name: listing.tier_name,
                   tier_abbr: listing.tier_abbr,
                   rarity: listing.rarity,

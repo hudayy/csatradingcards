@@ -7,6 +7,7 @@ import { Package, FolderOpen, LogIn, Coins, Gem, ArrowLeftRight } from 'lucide-r
 
 interface CardData {
   id: string;
+  card_type?: 'player' | 'gm';
   player_name: string;
   player_avatar_url: string | null;
   franchise_name: string | null;
@@ -28,7 +29,7 @@ interface CardData {
 
 export default function HomePage() {
   const [user, setUser] = useState<{ coins: number } | null>(null);
-  const [stats, setStats] = useState<{ total: number; uniquePlayers: number; byRarity: { rarity: string; count: number }[] } | null>(null);
+  const [stats, setStats] = useState<{ total: number; globalTotal: number; uniquePlayers: number; byRarity: { rarity: string; count: number }[] } | null>(null);
   const [featuredCards, setFeaturedCards] = useState<CardData[]>([]);
 
   useEffect(() => {
@@ -82,7 +83,7 @@ export default function HomePage() {
           <div className="stats-grid">
             <div className="stat-card">
               <div className="stat-label">Total Cards</div>
-              <div className="stat-value">{stats.total}</div>
+              <div className="stat-value">{stats.globalTotal}</div>
             </div>
             <div className="stat-card">
               <div className="stat-label">Unique Players</div>

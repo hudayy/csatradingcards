@@ -680,6 +680,8 @@ export function salvageCard(userId: number, userCardId: number): { coins: number
   const coins = SALVAGE_VALUES[row.rarity] ?? 10;
 
   database.transaction(() => {
+    database.prepare('DELETE FROM trade_cards WHERE user_card_id = ?').run(userCardId);
+    database.prepare('DELETE FROM marketplace_listings WHERE user_card_id = ?').run(userCardId);
     database.prepare('DELETE FROM pack_cards WHERE user_card_id = ?').run(userCardId);
     database.prepare('DELETE FROM user_cards WHERE id = ?').run(userCardId);
     database.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(coins, userId);
@@ -708,6 +710,8 @@ export function bulkSalvageCards(userId: number, userCardIds: number[]): { total
       const coins = SALVAGE_VALUES[row.rarity] ?? 10;
       totalCoins += coins;
       count++;
+      database.prepare('DELETE FROM trade_cards WHERE user_card_id = ?').run(userCardId);
+      database.prepare('DELETE FROM marketplace_listings WHERE user_card_id = ?').run(userCardId);
       database.prepare('DELETE FROM pack_cards WHERE user_card_id = ?').run(userCardId);
       database.prepare('DELETE FROM user_cards WHERE id = ?').run(userCardId);
     }
@@ -724,6 +728,10 @@ export function bulkSalvageCards(userId: number, userCardIds: number[]): { total
 }
 
 // ---- Collection stats ----
+
+export function getTotalCardsAllUsers(): number {
+  return (getDb().prepare('SELECT COUNT(*) as count FROM user_cards').get() as { count: number }).count;
+}
 
 export function getUserCollectionStats(userId: number) {
   const database = getDb();

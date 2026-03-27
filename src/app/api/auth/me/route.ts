@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession, COOKIE_NAME } from '@/lib/auth';
-import { getUserByDiscordId, getUserCollectionStats, isAdmin, isSuperAdmin, SUPER_ADMIN_CSA_ID } from '@/lib/db';
+import { getUserByDiscordId, getUserCollectionStats, getTotalCardsAllUsers, isAdmin, isSuperAdmin, SUPER_ADMIN_CSA_ID } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +16,7 @@ export async function GET() {
   }
 
   const stats = getUserCollectionStats(user.id);
+  const globalTotal = getTotalCardsAllUsers();
 
   return NextResponse.json({
     user: {
@@ -29,7 +30,7 @@ export async function GET() {
       is_admin: isAdmin(user),
       is_super_admin: isSuperAdmin(user),
     },
-    stats,
+    stats: { ...stats, globalTotal },
   });
 }
 

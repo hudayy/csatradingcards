@@ -835,6 +835,7 @@ body {
 .trading-card-sm .card-franchise-logo { width: 11px; height: 11px; }
 .trading-card-sm .card-team-name { font-size: 0.6rem; }
 .trading-card-sm .card-name-banner { padding: 8px 6px; }
+.trading-card-sm .card-concentric-rings { width: 130px; height: 130px; }
 
 /* Remove old rarity styling conflicts */
 

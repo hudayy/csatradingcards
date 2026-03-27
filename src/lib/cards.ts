@@ -81,25 +81,6 @@ export function generateCardId(playerCsaId: number, seasonId: number, rarity: Ra
   return uuidv5(seed, CARD_NAMESPACE);
 }
 
-function calculateOverallRating(stats: { gpg: number; apg: number; svpg: number; win_pct: number }, rarity: Rarity, salary: number): number {
-  // Base rating from stats (weighted formula)
-  const gpgScore = Math.min(stats.gpg * 30, 30);
-  const apgScore = Math.min(stats.apg * 25, 20);
-  const svpgScore = Math.min(stats.svpg * 15, 20);
-  const winScore = stats.win_pct * 30;
-  
-  let base = gpgScore + apgScore + svpgScore + winScore;
-  
-  // Salary bonus (higher salary = higher floor)
-  const salaryBonus = Math.min(salary / 1000, 10);
-  base += salaryBonus;
-  
-  // Rarity multiplier
-  base *= RARITY_STAT_MULTIPLIER[rarity];
-  
-  // Clamp
-  return Math.round(Math.min(Math.max(base, 30), 99));
-}
 
 export interface PlayerPool {
   player: CSALeaguePlayer;
@@ -194,7 +175,6 @@ export async function generateCard(
   };
 
   const cardId = generateCardId(player.Player.csa_id, seasonId, rarity);
-  const overall = calculateOverallRating(cardStats, rarity, player.active_salary);
   
   // Try to get avatar
   let avatarUrl = poolEntry.member?.avatar_url || null;
@@ -232,7 +212,7 @@ export async function generateCard(
     stat_svpg: cardStats.svpg,
     stat_win_pct: cardStats.win_pct,
     salary: player.active_salary,
-    overall_rating: overall,
+    overall_rating: 0,
   };
 
   // Insert into DB (idempotent)

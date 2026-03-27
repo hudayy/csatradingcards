@@ -337,6 +337,7 @@ export interface UserCard {
 }
 
 export type UserCardWithDetails = UserCard & Card;
+export type UserCardWithCopyCount = UserCardWithDetails & { copy_count: number };
 
 export function insertCard(card: Omit<Card, 'created_at'>): void {
   getDb().prepare(`
@@ -377,13 +378,14 @@ export function getUserCards(userId: number, filters?: {
   franchiseId?: number;
   seasonId?: number;
   tierAbbr?: string;
-}): UserCardWithDetails[] {
+}): UserCardWithCopyCount[] {
   let query = `
     SELECT uc.id as user_card_id, uc.user_id, uc.card_id, uc.acquired_at, uc.source, uc.is_listed,
       c.id, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
       c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
-      c.rarity, c.card_type, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
+      c.rarity, c.card_type, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at,
+      (SELECT COUNT(*) FROM user_cards WHERE card_id = c.id) as copy_count
     FROM user_cards uc
     JOIN cards c ON uc.card_id = c.id
     WHERE uc.user_id = ?
@@ -407,9 +409,9 @@ export function getUserCards(userId: number, filters?: {
     params.push(filters.tierAbbr);
   }
 
-  query += ' ORDER BY c.overall_rating DESC, uc.acquired_at DESC';
+  query += ` ORDER BY CASE c.rarity WHEN 'prismatic' THEN 7 WHEN 'holographic' THEN 6 WHEN 'diamond' THEN 5 WHEN 'platinum' THEN 4 WHEN 'gold' THEN 3 WHEN 'silver' THEN 2 ELSE 1 END DESC, uc.acquired_at DESC`;
 
-  return getDb().prepare(query).all(...params) as UserCardWithDetails[];
+  return getDb().prepare(query).all(...params) as UserCardWithCopyCount[];
 }
 
 export function getCardById(cardId: string): Card | undefined {
@@ -439,7 +441,7 @@ export function getPackHistory(userId: number): {
   id: number;
   pack_type: string;
   opened_at: string;
-  cards: { rarity: string; player_name: string; player_avatar_url: string | null; franchise_color: string | null; overall_rating: number }[];
+  cards: { rarity: string; player_name: string; player_avatar_url: string | null; franchise_color: string | null }[];
 }[] {
   const database = getDb();
   const packs = database.prepare(
@@ -448,10 +450,10 @@ export function getPackHistory(userId: number): {
 
   return packs.map(pack => {
     const cards = database.prepare(`
-      SELECT c.rarity, c.player_name, c.player_avatar_url, c.franchise_color, c.overall_rating
+      SELECT c.rarity, c.player_name, c.player_avatar_url, c.franchise_color
       FROM pack_cards pc JOIN cards c ON pc.card_id = c.id
       WHERE pc.pack_id = ?
-    `).all(pack.id) as { rarity: string; player_name: string; player_avatar_url: string | null; franchise_color: string | null; overall_rating: number }[];
+    `).all(pack.id) as { rarity: string; player_name: string; player_avatar_url: string | null; franchise_color: string | null }[];
     return { ...pack, cards };
   });
 }
@@ -772,10 +774,16 @@ export function getExtendedUserStats(userId: number) {
   `).all(userId) as { franchise_name: string; franchise_logo_url: string | null; franchise_color: string | null; count: number }[];
 
   const bestCard = db.prepare(`
-    SELECT c.player_name, c.rarity, c.overall_rating, c.franchise_name, c.tier_name, c.player_avatar_url
+    SELECT c.player_name, c.rarity, c.franchise_name, c.tier_name, c.player_avatar_url,
+      (SELECT COUNT(*) FROM user_cards WHERE card_id = c.id) as copy_count
     FROM user_cards uc JOIN cards c ON uc.card_id = c.id
-    WHERE uc.user_id = ? ORDER BY c.overall_rating DESC LIMIT 1
-  `).get(userId) as { player_name: string; rarity: string; overall_rating: number; franchise_name: string | null; tier_name: string | null; player_avatar_url: string | null } | undefined;
+    WHERE uc.user_id = ?
+    ORDER BY
+      CASE c.rarity WHEN 'prismatic' THEN 7 WHEN 'holographic' THEN 6 WHEN 'diamond' THEN 5
+        WHEN 'platinum' THEN 4 WHEN 'gold' THEN 3 WHEN 'silver' THEN 2 ELSE 1 END DESC,
+      copy_count ASC
+    LIMIT 1
+  `).get(userId) as { player_name: string; rarity: string; copy_count: number; franchise_name: string | null; tier_name: string | null; player_avatar_url: string | null } | undefined;
 
   const totalPacksOpened = (db.prepare('SELECT COUNT(*) as n FROM packs WHERE user_id = ?').get(userId) as { n: number }).n;
 

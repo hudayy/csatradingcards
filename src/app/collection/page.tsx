@@ -14,7 +14,7 @@ interface PackHistoryItem {
   id: number;
   pack_type: string;
   opened_at: string;
-  cards: { rarity: string; player_name: string; player_avatar_url: string | null; franchise_color: string | null; overall_rating: number }[];
+  cards: { rarity: string; player_name: string; player_avatar_url: string | null; franchise_color: string | null }[];
 }
 
 const SALVAGE_VALUES: Record<string, number> = {
@@ -44,6 +44,7 @@ interface CardData {
   overall_rating: number;
   season_number: number;
   is_listed: number;
+  copy_count: number;
 }
 
 const RARITIES = ['all', 'bronze', 'silver', 'gold', 'platinum', 'diamond', 'holographic', 'prismatic'];
@@ -509,7 +510,7 @@ export default function CollectionPage() {
                                   key={i}
                                   className="pack-hist-pip"
                                   style={{ background: RARITY_COLORS_HEX[card.rarity] ?? '#888', boxShadow: `0 0 5px ${RARITY_COLORS_HEX[card.rarity] ?? '#888'}88` }}
-                                  title={`${card.player_name} · ${card.rarity} · ${card.overall_rating} OVR`}
+                                  title={`${card.player_name} · ${card.rarity}`}
                                 />
                               ))}
                             </div>
@@ -554,8 +555,16 @@ export default function CollectionPage() {
               <button className="modal-close" onClick={() => { setSelectedCard(null); setSalvageConfirm(false); }}>×</button>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
               <TradingCard card={selectedCard} />
+            </div>
+
+            <div style={{ textAlign: 'center', marginBottom: '1.25rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+              <span style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '0.3rem 0.75rem' }}>
+                {selectedCard.copy_count === 1
+                  ? '✦ Only 1 copy exists'
+                  : `${selectedCard.copy_count} copies exist across all collections`}
+              </span>
             </div>
 
             {!selectedCard.is_listed && (

@@ -31,7 +31,7 @@ interface Stats {
   uniquePlayers: number;
   byRarity: { rarity: string; count: number }[];
   byFranchise: { franchise_name: string; franchise_logo_url: string | null; franchise_color: string | null; count: number }[];
-  bestCard: { player_name: string; rarity: string; overall_rating: number; franchise_name: string | null; tier_name: string | null; player_avatar_url: string | null } | null;
+  bestCard: { player_name: string; rarity: string; copy_count: number; franchise_name: string | null; tier_name: string | null; player_avatar_url: string | null } | null;
   totalPacksOpened: number;
   tradesCompleted: number;
   salesCompleted: number;
@@ -153,7 +153,7 @@ export default function ProfilePage() {
           {stats?.bestCard && (
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '1.25rem 1.5rem', flex: 1 }}>
               <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.75rem', fontFamily: 'Orbitron, sans-serif', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Star size={15} style={{ color: 'var(--accent-gold)' }} /> Best Card
+                <Star size={15} style={{ color: 'var(--accent-gold)' }} /> Rarest Card
               </h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 {stats.bestCard.player_avatar_url
@@ -167,7 +167,10 @@ export default function ProfilePage() {
                     {stats.bestCard.franchise_name && <span style={{ color: 'var(--text-muted)' }}>{stats.bestCard.franchise_name}</span>}
                   </div>
                 </div>
-                <div style={{ marginLeft: 'auto', fontSize: '1.5rem', fontWeight: 900, color: 'var(--accent-gold)' }}>{stats.bestCard.overall_rating}</div>
+                <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>exists</div>
+                  <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--accent-gold)' }}>{stats.bestCard.copy_count}×</div>
+                </div>
               </div>
             </div>
           )}

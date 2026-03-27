@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import TradingCard from '@/components/TradingCard';
-import { Package, Users, ArrowLeftRight, Star, LogIn, FolderOpen } from 'lucide-react';
+import { Package, Users, ArrowLeftRight, Star, LogIn, FolderOpen, TrendingUp, Coins } from 'lucide-react';
 
 interface ShowcaseCard {
   position: number;
@@ -36,6 +36,7 @@ interface PublicProfile {
     csa_name: string | null;
     avatar_url: string | null;
     created_at: string;
+    coins: number;
   };
   showcase: ShowcaseCard[];
   stats: {
@@ -44,6 +45,8 @@ interface PublicProfile {
     totalPacksOpened: number;
     tradesCompleted: number;
   };
+  collection_value: number;
+  net_worth: number;
 }
 
 const CARD_WIDTH = 260;
@@ -139,6 +142,8 @@ export default function PublicProfilePage() {
           { icon: <Users size={20} />, label: 'Unique Players', value: stats.uniquePlayers, color: 'var(--accent-green)' },
           { icon: <Package size={20} />, label: 'Packs Opened', value: stats.totalPacksOpened, color: 'var(--accent-blue)' },
           { icon: <ArrowLeftRight size={20} />, label: 'Trades Done', value: stats.tradesCompleted, color: 'var(--accent-purple, #a78bfa)' },
+          { icon: <TrendingUp size={20} />, label: 'Collection Value', value: profile.collection_value, color: 'var(--accent-green)' },
+          { icon: <Coins size={20} />, label: 'Net Worth', value: profile.net_worth, color: 'var(--accent-gold)' },
         ].map(s => (
           <div key={s.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '1rem 1.1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <div style={{ color: s.color, flexShrink: 0 }}>{s.icon}</div>

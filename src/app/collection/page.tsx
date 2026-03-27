@@ -115,6 +115,8 @@ export default function CollectionPage() {
   const [showcasePosition, setShowcasePosition] = useState<number>(1);
   const [addingToShowcase, setAddingToShowcase] = useState(false);
   const [showcaseAddMsg, setShowcaseAddMsg] = useState<string | null>(null);
+  const [cardValuation, setCardValuation] = useState<{ value: number; basis: string; copy_count: number; recent_sales_count: number; recent_avg: number | null } | null>(null);
+  const [valuationLoading, setValuationLoading] = useState(false);
 
   const fetchCards = async (opts?: { rarity?: string; search?: string; sort?: string; cardType?: string }) => {
     const params = new URLSearchParams();
@@ -168,6 +170,17 @@ export default function CollectionPage() {
     searchTimer.current = setTimeout(() => setSearch(searchInput), 300);
     return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
   }, [searchInput]);
+
+  useEffect(() => {
+    if (!selectedCard) { setCardValuation(null); return; }
+    setCardValuation(null);
+    setValuationLoading(true);
+    fetch(`/api/cards/${selectedCard.id}/value`)
+      .then(r => r.json())
+      .then(v => setCardValuation(v))
+      .catch(() => {})
+      .finally(() => setValuationLoading(false));
+  }, [selectedCard?.id]);
 
   const handleOpenInventoryPack = async (inventoryId: number) => {
     setOpeningId(inventoryId);
@@ -803,12 +816,22 @@ export default function CollectionPage() {
               <TradingCard card={selectedCard} />
             </div>
 
-            <div style={{ textAlign: 'center', marginBottom: '1.25rem', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+            <div style={{ textAlign: 'center', marginBottom: '1.25rem', fontSize: '0.82rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.4rem', alignItems: 'center' }}>
               <span style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '0.3rem 0.75rem' }}>
                 {selectedCard.copy_count === 1
                   ? '✦ Only 1 copy exists'
                   : `${selectedCard.copy_count} copies exist across all collections`}
               </span>
+              {valuationLoading ? (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Calculating value…</span>
+              ) : cardValuation ? (
+                <span style={{ background: 'rgba(250,204,21,0.1)', border: '1px solid rgba(250,204,21,0.3)', borderRadius: 'var(--radius-sm)', padding: '0.3rem 0.75rem', display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--accent-gold)', fontWeight: 700 }}>
+                  <Coins size={13} /> Est. Value: {cardValuation.value.toLocaleString()}
+                  <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                    ({cardValuation.basis === 'sales' ? `${cardValuation.recent_sales_count} recent sale${cardValuation.recent_sales_count !== 1 ? 's' : ''}` : cardValuation.basis === 'rarity_market' ? 'rarity avg' : 'base rate'})
+                  </span>
+                </span>
+              ) : null}
             </div>
 
             {!selectedCard.is_listed && (

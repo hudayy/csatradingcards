@@ -24,6 +24,8 @@ interface UserData {
   coins: number;
   created_at: string;
   last_login: string;
+  collection_value?: number;
+  net_worth?: number;
 }
 
 interface Stats {
@@ -164,6 +166,8 @@ export default function ProfilePage() {
         <StatCard icon={<ArrowLeftRight size={22} />} label="Trades Done" value={stats?.tradesCompleted ?? 0} color="var(--accent-purple, #a78bfa)" />
         <StatCard icon={<ShoppingBag size={22} />} label="Cards Sold" value={stats?.salesCompleted ?? 0} sub={`${stats?.purchasesCompleted ?? 0} purchased`} color="var(--accent-gold)" />
         <StatCard icon={<TrendingUp size={22} />} label="Listed Now" value={stats?.listedCards ?? 0} color="var(--accent-gold)" />
+        <StatCard icon={<TrendingUp size={22} />} label="Collection Value" value={user?.collection_value ?? 0} color="var(--accent-green)" />
+        <StatCard icon={<Coins size={22} />} label="Net Worth" value={user?.net_worth ?? 0} color="var(--accent-gold)" />
         <StatCard icon={<Clock size={22} />} label="Days Active" value={daysSince} color="var(--text-muted)" />
       </div>
 

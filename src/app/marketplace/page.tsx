@@ -24,6 +24,7 @@ interface ListingData {
   tier_name: string | null;
   tier_abbr: string | null;
   rarity: string;
+  card_type: string;
   stat_gpg: number;
   stat_apg: number;
   stat_svpg: number;
@@ -253,6 +254,7 @@ export default function MarketplacePage() {
                       tier_name: listing.tier_name,
                       tier_abbr: listing.tier_abbr,
                       rarity: listing.rarity,
+                      card_type: listing.card_type as 'player' | 'gm',
                       stat_gpg: listing.stat_gpg,
                       stat_apg: listing.stat_apg,
                       stat_svpg: listing.stat_svpg,

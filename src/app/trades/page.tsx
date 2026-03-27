@@ -17,6 +17,7 @@ interface CardData {
   tier_name: string | null;
   tier_abbr: string | null;
   rarity: string;
+  card_type?: 'player' | 'gm';
   stat_gpg: number;
   stat_apg: number;
   stat_svpg: number;

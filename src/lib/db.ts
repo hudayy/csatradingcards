@@ -1047,7 +1047,7 @@ function getTradeCards(tradeId: number, side: 'sender' | 'receiver'): UserCardWi
       c.id, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
       c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
-      c.rarity, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
+      c.rarity, c.card_type, c.stat_gpg, c.stat_apg, c.stat_svpg, c.stat_win_pct, c.salary, c.overall_rating, c.created_at
     FROM trade_cards tc
     JOIN user_cards uc ON tc.user_card_id = uc.id
     JOIN cards c ON uc.card_id = c.id

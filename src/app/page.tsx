@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import TradingCard from '@/components/TradingCard';
 import Link from 'next/link';
-import { Package, FolderOpen, LogIn, Coins, Gem, ArrowLeftRight } from 'lucide-react';
+import { Package, FolderOpen, LogIn, Gem, ArrowLeftRight } from 'lucide-react';
 
 interface CardData {
   id: string;
@@ -29,16 +29,12 @@ interface CardData {
 
 export default function HomePage() {
   const [user, setUser] = useState<{ coins: number } | null>(null);
-  const [stats, setStats] = useState<{ total: number; globalTotal: number; uniquePlayers: number; byRarity: { rarity: string; count: number }[] } | null>(null);
   const [featuredCards, setFeaturedCards] = useState<CardData[]>([]);
 
   useEffect(() => {
     fetch('/api/auth/me')
       .then(r => r.json())
-      .then(data => {
-        if (data.user) setUser(data.user);
-        if (data.stats) setStats(data.stats);
-      })
+      .then(data => { if (data.user) setUser(data.user); })
       .catch(() => {});
 
     fetch('/api/featured')
@@ -79,34 +75,6 @@ export default function HomePage() {
       </section>
 
       <div className="container">
-        {user && stats && (
-          <div className="stats-grid">
-            <div className="stat-card">
-              <div className="stat-label">Total Cards</div>
-              <div className="stat-value">{stats.globalTotal}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Unique Players</div>
-              <div className="stat-value">{stats.uniquePlayers}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Coins</div>
-              <div className="stat-value" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}><Coins size={20} /> {user.coins.toLocaleString()}</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-label">Rarest Card</div>
-              <div className="stat-value" style={{ fontSize: '1.2rem' }}>
-                {stats.byRarity.length > 0
-                  ? stats.byRarity.sort((a, b) => {
-                      const order = ['prismatic', 'holographic', 'diamond', 'platinum', 'gold', 'silver', 'bronze'];
-                      return order.indexOf(a.rarity) - order.indexOf(b.rarity);
-                    })[0]?.rarity.toUpperCase()
-                  : 'N/A'}
-              </div>
-            </div>
-          </div>
-        )}
-
         <div style={{ textAlign: 'center', padding: '2rem 0' }}>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 800, fontFamily: 'Orbitron, sans-serif', marginBottom: '1rem' }}>
             How It Works

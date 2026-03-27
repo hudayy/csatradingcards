@@ -83,6 +83,7 @@ export default function NavBar() {
     { href: '/collection/binders', label: 'Binders' },
     { href: '/marketplace', label: 'Marketplace' },
     { href: '/trades', label: 'Trades' },
+    { href: '/leaderboard', label: 'Leaderboard' },
     ...(user?.is_admin ? [{ href: '/admin', label: 'Admin' }] : []),
   ];
 

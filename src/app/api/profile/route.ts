@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, getExtendedUserStats } from '@/lib/db';
+import { getUserByDiscordId, getExtendedUserStats, getUserCollectionValue } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +12,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
 
   const stats = getExtendedUserStats(user.id);
+  const collection_value = getUserCollectionValue(user.id);
 
   return NextResponse.json({
     user: {
@@ -23,6 +24,8 @@ export async function GET() {
       coins: user.coins,
       created_at: user.created_at,
       last_login: user.last_login,
+      collection_value,
+      net_worth: user.coins + collection_value,
     },
     stats,
   });

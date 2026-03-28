@@ -891,13 +891,12 @@ export const SALVAGE_VALUES: Record<string, number> = {
 export function salvageCard(userId: number, userCardId: number): { coins: number; newBalance: number } {
   const database = getDb();
   const row = database.prepare(`
-    SELECT uc.id, uc.user_id, uc.is_listed, uc.is_reward_card, c.rarity
+    SELECT uc.id, uc.is_listed, uc.is_reward_card, c.rarity
     FROM user_cards uc JOIN cards c ON uc.card_id = c.id
-    WHERE uc.id = ?
-  `).get(userCardId) as { id: number; user_id: number; is_listed: number; is_reward_card: number; rarity: string } | undefined;
+    WHERE uc.id = ? AND uc.user_id = ?
+  `).get(userCardId, userId) as { id: number; is_listed: number; is_reward_card: number; rarity: string } | undefined;
 
   if (!row) throw new Error('Card not found');
-  if (row.user_id !== userId) throw new Error('Not your card');
   if (row.is_listed) throw new Error('Cannot salvage a listed card');
   if (row.is_reward_card) throw new Error('Set reward cards cannot be salvaged');
 
@@ -924,12 +923,12 @@ export function bulkSalvageCards(userId: number, userCardIds: number[]): { total
   database.transaction(() => {
     for (const userCardId of userCardIds) {
       const row = database.prepare(`
-        SELECT uc.id, uc.user_id, uc.is_listed, uc.is_reward_card, c.rarity
+        SELECT uc.id, uc.is_listed, uc.is_reward_card, c.rarity
         FROM user_cards uc JOIN cards c ON uc.card_id = c.id
-        WHERE uc.id = ?
-      `).get(userCardId) as { id: number; user_id: number; is_listed: number; is_reward_card: number; rarity: string } | undefined;
+        WHERE uc.id = ? AND uc.user_id = ?
+      `).get(userCardId, userId) as { id: number; is_listed: number; is_reward_card: number; rarity: string } | undefined;
 
-      if (!row || row.user_id !== userId || row.is_listed || row.is_reward_card) continue;
+      if (!row || row.is_listed || row.is_reward_card) continue;
 
       const coins = SALVAGE_VALUES[row.rarity] ?? 10;
       totalCoins += coins;
@@ -1275,14 +1274,14 @@ export function createTrade(senderId: number, receiverId: number, senderCardIds:
   if (senderCoins > 0 && (!sender || sender.coins < senderCoins)) throw new Error('Not enough coins to offer');
 
   for (const id of senderCardIds) {
-    const card = database.prepare('SELECT uc.*, c.player_name, c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.id = ?').get(id) as (UserCard & { player_name: string; rarity: string }) | undefined;
-    if (!card || card.user_id !== senderId) throw new Error(`Card not found in your collection (ID ${id})`);
+    const card = database.prepare('SELECT uc.*, c.player_name, c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.id = ? AND uc.user_id = ?').get(id, senderId) as (UserCard & { player_name: string; rarity: string }) | undefined;
+    if (!card) throw new Error(`Card not found in your collection (ID ${id})`);
     if (card.is_listed) throw new Error(`"${card.player_name}" (${card.rarity}) is listed on the marketplace and cannot be traded`);
     if (card.is_reward_card) throw new Error(`"${card.player_name}" (${card.rarity}) is a Set Reward card and cannot be traded`);
   }
   for (const id of receiverCardIds) {
-    const card = database.prepare('SELECT uc.*, c.player_name, c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.id = ?').get(id) as (UserCard & { player_name: string; rarity: string }) | undefined;
-    if (!card || card.user_id !== receiverId) throw new Error(`Requested card not found in their collection (ID ${id})`);
+    const card = database.prepare('SELECT uc.*, c.player_name, c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.id = ? AND uc.user_id = ?').get(id, receiverId) as (UserCard & { player_name: string; rarity: string }) | undefined;
+    if (!card) throw new Error(`Requested card not found in their collection (ID ${id})`);
     if (card.is_listed) throw new Error(`"${card.player_name}" (${card.rarity}) is listed on the marketplace and cannot be traded`);
     if (card.is_reward_card) throw new Error(`"${card.player_name}" (${card.rarity}) is a Set Reward card and cannot be traded`);
   }
@@ -1464,12 +1463,11 @@ export function consumeCardsForTradeUp(userId: number, userCardIds: number[]): s
   db.transaction(() => {
     for (const id of userCardIds) {
       const row = db.prepare(`
-        SELECT uc.id, uc.user_id, uc.is_listed, c.rarity
-        FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.id = ?
-      `).get(id) as { id: number; user_id: number; is_listed: number; rarity: string } | undefined;
+        SELECT uc.id, uc.is_listed, c.rarity
+        FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.id = ? AND uc.user_id = ?
+      `).get(id, userId) as { id: number; is_listed: number; rarity: string } | undefined;
 
       if (!row) throw new Error('Card not found');
-      if (row.user_id !== userId) throw new Error('Card not owned by you');
       if (row.is_listed) throw new Error('Cannot trade up a listed card');
       if (!commonRarity) commonRarity = row.rarity;
       else if (row.rarity !== commonRarity) throw new Error('All 5 cards must be the same rarity');

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import TradingCard from '@/components/TradingCard';
 import { Coins, Package, Users, ArrowLeftRight, ShoppingBag, Star, TrendingUp, Clock, LogIn, ExternalLink, X } from 'lucide-react';
 
@@ -87,6 +87,7 @@ export default function ProfilePage() {
   const [showcase, setShowcase] = useState<ShowcaseCard[]>([]);
   const [editingShowcase, setEditingShowcase] = useState(false);
   const [showcaseMsg, setShowcaseMsg] = useState<string | null>(null);
+  const dragPos = useRef<number | null>(null);
 
   useEffect(() => {
     fetch('/api/profile').then(r => r.json()).then(d => {
@@ -105,6 +106,26 @@ export default function ProfilePage() {
       body: JSON.stringify({ position }),
     });
     setShowcase(s => s.filter(c => c.position !== position));
+  };
+
+  const handleDrop = async (toPosition: number) => {
+    const fromPosition = dragPos.current;
+    if (fromPosition === null || fromPosition === toPosition) return;
+    dragPos.current = null;
+    // Optimistic update
+    setShowcase(prev => {
+      const next = prev.map(c => ({ ...c }));
+      const from = next.find(c => c.position === fromPosition);
+      const to = next.find(c => c.position === toPosition);
+      if (from) from.position = toPosition;
+      if (to) to.position = fromPosition;
+      return next.sort((a, b) => a.position - b.position);
+    });
+    await fetch('/api/profile/showcase', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from_position: fromPosition, to_position: toPosition }),
+    });
   };
 
   if (loading) return <div className="container"><div className="loading-spinner"><div className="spinner" /></div></div>;
@@ -265,7 +286,14 @@ export default function ProfilePage() {
         ) : (
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'flex-start' }}>
             {showcase.map(card => (
-              <div key={card.position} style={{ position: 'relative' }}>
+              <div
+                key={card.position}
+                style={{ position: 'relative', cursor: editingShowcase ? 'grab' : 'default' }}
+                draggable={editingShowcase}
+                onDragStart={() => { dragPos.current = card.position; }}
+                onDragOver={e => { if (editingShowcase) e.preventDefault(); }}
+                onDrop={() => handleDrop(card.position)}
+              >
                 <TradingCard
                   card={{
                     id: card.card_id,
@@ -311,7 +339,7 @@ export default function ProfilePage() {
         )}
         {editingShowcase && (
           <div style={{ marginTop: '1rem', fontSize: '0.78rem', color: 'var(--text-muted)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', padding: '0.5rem 0.75rem' }}>
-            To add cards: go to <a href="/collection" style={{ color: 'var(--accent-blue)' }}>Collection</a>, click a card, and use &quot;Add to Display Case&quot;.
+            To add cards: go to <a href="/collection" style={{ color: 'var(--accent-blue)' }}>Collection</a>, click a card, and use &quot;Add to Display Case&quot;. Drag cards to reorder them.
           </div>
         )}
       </div>

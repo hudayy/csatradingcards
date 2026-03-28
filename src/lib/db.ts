@@ -193,6 +193,7 @@ function initializeSchema(db: Database.Database) {
     'ALTER TABLE users ADD COLUMN login_streak INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE users ADD COLUMN last_login_date TEXT',
     'ALTER TABLE user_cards ADD COLUMN is_reward_card INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE user_cards ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0',
   ]) {
     try { db.exec(col); } catch { /* already exists */ }
   }
@@ -457,6 +458,7 @@ export interface UserCard {
   source: string;
   is_listed: number;
   is_reward_card: number;
+  is_locked: number;
 }
 
 export type UserCardWithDetails = UserCard & Card;
@@ -506,7 +508,7 @@ export function getUserCards(userId: number, filters?: {
   cardType?: 'player' | 'gm';
 }): UserCardWithCopyCount[] {
   let query = `
-    SELECT uc.id as user_card_id, uc.user_id, uc.card_id, uc.acquired_at, uc.source, uc.is_listed,
+    SELECT uc.id as user_card_id, uc.user_id, uc.card_id, uc.acquired_at, uc.source, uc.is_listed, uc.is_locked,
       c.id, c.player_csa_id, c.player_name, c.player_discord_id, c.player_avatar_url,
       c.season_id, c.season_number, c.franchise_id, c.franchise_name, c.franchise_abbr,
       c.franchise_color, c.franchise_logo_url, c.franchise_conf, c.tier_name, c.tier_abbr,
@@ -627,10 +629,11 @@ export function createListing(sellerId: number, userCardId: number, cardId: stri
   const db = getDb();
   let listingId!: number;
   db.transaction(() => {
-    const card = db.prepare('SELECT is_listed, is_reward_card FROM user_cards WHERE id = ? AND user_id = ?').get(userCardId, sellerId) as { is_listed: number; is_reward_card: number } | undefined;
+    const card = db.prepare('SELECT is_listed, is_reward_card, is_locked FROM user_cards WHERE id = ? AND user_id = ?').get(userCardId, sellerId) as { is_listed: number; is_reward_card: number; is_locked: number } | undefined;
     if (!card) throw new Error('Card not found');
     if (card.is_listed) throw new Error('Card is already listed');
     if (card.is_reward_card) throw new Error('Set reward cards cannot be listed on the marketplace');
+    if (card.is_locked) throw new Error('Card is locked — unlock it before listing');
     db.prepare('UPDATE user_cards SET is_listed = 1 WHERE id = ?').run(userCardId);
     const result = db.prepare(`INSERT INTO marketplace_listings (seller_id, user_card_id, card_id, price, expires_at) VALUES (?, ?, ?, ?, datetime('now', '+30 days'))`).run(sellerId, userCardId, cardId, price);
     listingId = result.lastInsertRowid as number;
@@ -903,14 +906,15 @@ export const SALVAGE_VALUES: Record<string, number> = {
 export function salvageCard(userId: number, userCardId: number): { coins: number; newBalance: number } {
   const database = getDb();
   const row = database.prepare(`
-    SELECT uc.id, uc.is_listed, uc.is_reward_card, c.rarity
+    SELECT uc.id, uc.is_listed, uc.is_reward_card, uc.is_locked, c.rarity
     FROM user_cards uc JOIN cards c ON uc.card_id = c.id
     WHERE uc.id = ? AND uc.user_id = ?
-  `).get(userCardId, userId) as { id: number; is_listed: number; is_reward_card: number; rarity: string } | undefined;
+  `).get(userCardId, userId) as { id: number; is_listed: number; is_reward_card: number; is_locked: number; rarity: string } | undefined;
 
   if (!row) throw new Error('Card not found');
   if (row.is_listed) throw new Error('Cannot salvage a listed card');
   if (row.is_reward_card) throw new Error('Set reward cards cannot be salvaged');
+  if (row.is_locked) throw new Error('Card is locked — unlock it before salvaging');
 
   const coins = SALVAGE_VALUES[row.rarity] ?? 10;
 
@@ -927,6 +931,22 @@ export function salvageCard(userId: number, userCardId: number): { coins: number
   return { coins, newBalance: updated.coins };
 }
 
+export function toggleCardLock(userId: number, userCardId: number): { is_locked: boolean } {
+  const db = getDb();
+  const row = db.prepare('SELECT is_locked FROM user_cards WHERE id = ? AND user_id = ?').get(userCardId, userId) as { is_locked: number } | undefined;
+  if (!row) throw new Error('Card not found');
+  const newVal = row.is_locked ? 0 : 1;
+  db.prepare('UPDATE user_cards SET is_locked = ? WHERE id = ? AND user_id = ?').run(newVal, userCardId, userId);
+  return { is_locked: newVal === 1 };
+}
+
+export function getPendingIncomingTradeCount(userId: number): number {
+  const db = getDb();
+  db.exec(`UPDATE trades SET status = 'declined', resolved_at = CURRENT_TIMESTAMP WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP`);
+  const row = db.prepare(`SELECT COUNT(*) as n FROM trades WHERE receiver_id = ? AND status = 'pending'`).get(userId) as { n: number };
+  return row.n;
+}
+
 export function bulkSalvageCards(userId: number, userCardIds: number[]): { totalCoins: number; newBalance: number; count: number } {
   const database = getDb();
   let totalCoins = 0;
@@ -935,12 +955,12 @@ export function bulkSalvageCards(userId: number, userCardIds: number[]): { total
   database.transaction(() => {
     for (const userCardId of userCardIds) {
       const row = database.prepare(`
-        SELECT uc.id, uc.is_listed, uc.is_reward_card, c.rarity
+        SELECT uc.id, uc.is_listed, uc.is_reward_card, uc.is_locked, c.rarity
         FROM user_cards uc JOIN cards c ON uc.card_id = c.id
         WHERE uc.id = ? AND uc.user_id = ?
-      `).get(userCardId, userId) as { id: number; is_listed: number; is_reward_card: number; rarity: string } | undefined;
+      `).get(userCardId, userId) as { id: number; is_listed: number; is_reward_card: number; is_locked: number; rarity: string } | undefined;
 
-      if (!row || row.is_listed || row.is_reward_card) continue;
+      if (!row || row.is_listed || row.is_reward_card || row.is_locked) continue;
 
       const coins = SALVAGE_VALUES[row.rarity] ?? 10;
       totalCoins += coins;
@@ -1570,6 +1590,23 @@ export function setShowcaseCard(userId: number, userCardId: number, position: nu
 
 export function removeShowcaseCard(userId: number, position: number): void {
   getDb().prepare('DELETE FROM showcase_cards WHERE user_id = ? AND position = ?').run(userId, position);
+}
+
+export function swapShowcasePositions(userId: number, fromPosition: number, toPosition: number): void {
+  const db = getDb();
+  db.transaction(() => {
+    const from = db.prepare('SELECT user_card_id FROM showcase_cards WHERE user_id = ? AND position = ?').get(userId, fromPosition) as { user_card_id: number } | undefined;
+    const to = db.prepare('SELECT user_card_id FROM showcase_cards WHERE user_id = ? AND position = ?').get(userId, toPosition) as { user_card_id: number } | undefined;
+    if (!from) return;
+    if (to) {
+      db.prepare('UPDATE showcase_cards SET position = ? WHERE user_id = ? AND position = ?').run(fromPosition, userId, toPosition);
+    } else {
+      db.prepare('DELETE FROM showcase_cards WHERE user_id = ? AND position = ?').run(userId, fromPosition);
+    }
+    db.prepare(`INSERT INTO showcase_cards (user_id, user_card_id, position) VALUES (?, ?, ?)
+      ON CONFLICT(user_id, position) DO UPDATE SET user_card_id = excluded.user_card_id, added_at = CURRENT_TIMESTAMP`
+    ).run(userId, from.user_card_id, toPosition);
+  })();
 }
 
 export function getPublicUserProfile(userId: number): {

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import TradingCard from '@/components/TradingCard';
-import { FolderOpen, LogIn, Package, Coins, Tag, Flame, ChevronLeft, Layers, ArrowUp, Store, Star, Search, SortAsc, Trophy, BookOpen } from 'lucide-react';
+import { FolderOpen, LogIn, Package, Coins, Tag, Flame, ChevronLeft, Layers, ArrowUp, Store, Star, Search, SortAsc, Trophy, BookOpen, Lock, LockOpen } from 'lucide-react';
 
 interface InventoryPack {
   id: number;
@@ -44,6 +44,7 @@ interface CardData {
   overall_rating: number;
   season_number: number;
   is_listed: number;
+  is_locked: number;
   copy_count: number;
 }
 
@@ -118,6 +119,7 @@ export default function CollectionPage() {
   const [showcaseAddMsg, setShowcaseAddMsg] = useState<string | null>(null);
   const [cardValuation, setCardValuation] = useState<{ value: number; basis: string; copy_count: number; recent_sales_count: number; recent_avg: number | null } | null>(null);
   const [valuationLoading, setValuationLoading] = useState(false);
+  const [locking, setLocking] = useState(false);
   // Full sets
   const [sets, setSets] = useState<{ franchise_id: number; franchise_name: string; franchise_color: string | null; franchise_logo_url: string | null; franchise_abbr: string | null; season_id: number; season_number: number; set_type: 'rarity' | 'super'; rarity: string | null; owned_count: number; total_count: number; is_complete: boolean; already_claimed: boolean }[]>([]);
   const [setsLoading, setSetsLoading] = useState(false);
@@ -554,7 +556,7 @@ export default function CollectionPage() {
                 const ucId = card.user_card_id!;
                 if (bulkMode) {
                   const isSelected = bulkSelected.has(ucId);
-                  const canSelect = !card.is_listed;
+                  const canSelect = !card.is_listed && !card.is_locked;
                   return (
                     <div key={`${card.id}-${i}`} className={`card-select-wrapper${isSelected ? ' selected' : ''}${!canSelect ? ' unlisted' : ''}`}
                       onClick={() => { if (!canSelect) return; setBulkSelected(prev => { const n = new Set(prev); if (n.has(ucId)) n.delete(ucId); else n.add(ucId); return n; }); }}>
@@ -585,7 +587,16 @@ export default function CollectionPage() {
                     </div>
                   );
                 }
-                return <TradingCard key={`${card.id}-${i}`} card={card} onClick={() => { setSelectedCard(card); setShowcasePosition(1); setShowcaseAddMsg(null); setSalvageConfirm(false); setListPrice(''); }} />;
+                return (
+                  <div key={`${card.id}-${i}`} style={{ position: 'relative' }}>
+                    <TradingCard card={card} onClick={() => { setSelectedCard(card); setShowcasePosition(1); setShowcaseAddMsg(null); setSalvageConfirm(false); setListPrice(''); setLocking(false); }} />
+                    {!!card.is_locked && (
+                      <div style={{ position: 'absolute', top: 6, left: 6, background: 'rgba(0,0,0,0.7)', borderRadius: 'var(--radius-sm)', padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.65rem', color: 'var(--accent-blue)', pointerEvents: 'none' }}>
+                        <Lock size={10} /> Locked
+                      </div>
+                    )}
+                  </div>
+                );
               })}
             </div>
           )}
@@ -980,7 +991,10 @@ export default function CollectionPage() {
 
             {!selectedCard.is_listed && (
               <>
-                <div style={{ marginBottom: '0.5rem', fontWeight: 600, fontSize: '0.9rem' }}>List on Marketplace</div>
+                <div style={{ marginBottom: '0.5rem', fontWeight: 600, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  List on Marketplace
+                  {!!selectedCard.is_locked && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400, display: 'flex', alignItems: 'center', gap: '0.25rem' }}><Lock size={11} /> Unlock to list</span>}
+                </div>
                 <div className="price-input-group" style={{ marginBottom: '1rem' }}>
                   <span className="coin-icon"><Coins size={18} /></span>
                   <input
@@ -995,7 +1009,7 @@ export default function CollectionPage() {
                 </div>
                 <div className="modal-actions" style={{ marginBottom: '1rem' }}>
                   <button className="btn btn-secondary" onClick={() => { setSelectedCard(null); setSalvageConfirm(false); }}>Cancel</button>
-                  <button className="btn btn-primary" onClick={handleListCard} disabled={!listPrice || parseInt(listPrice) < 1}>List for Sale</button>
+                  <button className="btn btn-primary" onClick={handleListCard} disabled={!listPrice || parseInt(listPrice) < 1 || !!selectedCard.is_locked}>List for Sale</button>
                 </div>
 
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1rem', marginBottom: '1rem' }}>
@@ -1032,12 +1046,39 @@ export default function CollectionPage() {
                   </button>
                 </div>
 
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1rem', marginBottom: '1rem' }}>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: selectedCard.is_locked ? 'var(--accent-green)' : 'var(--accent-blue)' }}
+                    onClick={async () => {
+                      setLocking(true);
+                      const res = await fetch('/api/collection/lock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_card_id: selectedCard.user_card_id }) });
+                      const data = await res.json();
+                      if (data.success) {
+                        const newLocked = data.is_locked ? 1 : 0;
+                        setSelectedCard(c => c ? { ...c, is_locked: newLocked } : c);
+                        setCards(cs => cs.map(c => c.user_card_id === selectedCard.user_card_id ? { ...c, is_locked: newLocked } : c));
+                      }
+                      setLocking(false);
+                    }}
+                    disabled={locking}
+                  >
+                    {selectedCard.is_locked ? <><LockOpen size={15} /> Unlock Card</> : <><Lock size={15} /> Lock Card</>}
+                  </button>
+                  {selectedCard.is_locked && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.4rem' }}>
+                      Locked cards cannot be salvaged or listed.
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1rem' }}>
                   {!salvageConfirm ? (
                     <button
                       className="btn btn-secondary"
-                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: '#f97316' }}
-                      onClick={() => setSalvageConfirm(true)}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: selectedCard.is_locked ? 'var(--text-muted)' : '#f97316', opacity: selectedCard.is_locked ? 0.5 : 1 }}
+                      onClick={() => { if (!selectedCard.is_locked) setSalvageConfirm(true); }}
+                      disabled={!!selectedCard.is_locked}
                     >
                       <Flame size={15} /> Salvage for {SALVAGE_VALUES[selectedCard.rarity] ?? 10} coins
                     </button>

@@ -19,6 +19,7 @@ export default function NavBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [bonusToast, setBonusToast] = useState<string | null>(null);
+  const [pendingTrades, setPendingTrades] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
 
@@ -43,10 +44,19 @@ export default function NavBar() {
               }
             })
             .catch(() => {});
+          fetch('/api/trades/count').then(r => r.json()).then(d => setPendingTrades(d.count ?? 0)).catch(() => {});
         }
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const interval = setInterval(() => {
+      fetch('/api/trades/count').then(r => r.json()).then(d => setPendingTrades(d.count ?? 0)).catch(() => {});
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   useEffect(() => {
     function handler(e: Event) {
@@ -81,11 +91,11 @@ export default function NavBar() {
     { href: '/shop', label: 'Shop' },
     { href: '/collection', label: 'Collection' },
     { href: '/marketplace', label: 'Marketplace' },
-    { href: '/trades', label: 'Trades' },
+    { href: '/trades', label: 'Trades', badge: pendingTrades > 0 ? pendingTrades : undefined },
     { href: '/challenges', label: 'Challenges' },
     { href: '/leaderboard', label: 'Leaderboard' },
     ...(user?.is_admin ? [{ href: '/admin', label: 'Admin' }] : []),
-  ];
+  ] as { href: string; label: string; badge?: number }[];
 
   return (
     <>
@@ -102,12 +112,17 @@ export default function NavBar() {
 
       <ul className="nav-links">
         {links.map(link => (
-          <li key={link.href}>
+          <li key={link.href} style={{ position: 'relative' }}>
             <Link
               href={link.href}
               className={pathname === link.href ? 'active' : ''}
             >
               {link.label}
+              {link.badge !== undefined && (
+                <span style={{ position: 'absolute', top: -6, right: -10, background: 'var(--accent-red, #ef4444)', color: '#fff', borderRadius: '99px', fontSize: '0.65rem', fontWeight: 700, minWidth: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', lineHeight: 1 }}>
+                  {link.badge > 99 ? '99+' : link.badge}
+                </span>
+              )}
             </Link>
           </li>
         ))}
@@ -162,13 +177,18 @@ export default function NavBar() {
       <div className="mobile-nav-drawer">
         <ul className="mobile-nav-links">
           {links.map(link => (
-            <li key={link.href}>
+            <li key={link.href} style={{ position: 'relative' }}>
               <Link
                 href={link.href}
                 className={pathname === link.href ? 'active' : ''}
                 onClick={() => setMobileNavOpen(false)}
               >
                 {link.label}
+                {link.badge !== undefined && (
+                  <span style={{ marginLeft: '0.4rem', background: 'var(--accent-red, #ef4444)', color: '#fff', borderRadius: '99px', fontSize: '0.65rem', fontWeight: 700, minWidth: 16, height: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', lineHeight: 1 }}>
+                    {link.badge > 99 ? '99+' : link.badge}
+                  </span>
+                )}
               </Link>
             </li>
           ))}

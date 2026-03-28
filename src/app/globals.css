@@ -1955,6 +1955,8 @@ body {
   gap: 3px;
   position: relative;
   z-index: 3;
+  overflow: hidden;
+  padding: 0 8px;
 }
 .pv-foot-name {
   font-family: 'Orbitron', sans-serif;
@@ -2056,7 +2058,16 @@ body {
   position: relative; z-index: 1;
 }
 .pv-loyalty-five { color: color-mix(in srgb, var(--fl-color, #22c55e) 70%, white); margin-top: 4px; }
-.pv-loyalty-name { color: var(--fl-color, #22c55e); }
+.pv-loyalty-name {
+  color: var(--fl-color, #22c55e);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 12px);
+  text-align: center;
+}
 
 /* ---- Loyalty section in shop ---- */
 .loyalty-section {

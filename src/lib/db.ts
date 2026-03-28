@@ -1781,49 +1781,119 @@ export interface LeaderboardEntry {
 }
 
 export function getLeaderboard(limit = 100): LeaderboardEntry[] {
-  return getDb().prepare(`
-    WITH card_copy_counts AS (
-      SELECT card_id, COUNT(*) as copies
-      FROM user_cards
+  const db = getDb();
+
+  // All users
+  const users = db.prepare(`
+    SELECT id, COALESCE(csa_name, discord_username) as display_name, avatar_url, csa_id, coins
+    FROM users
+  `).all() as { id: number; display_name: string; avatar_url: string | null; csa_id: number | null; coins: number }[];
+
+  // All user cards with global copy counts (same query shape as getUserCollectionValue)
+  const allCards = db.prepare(`
+    SELECT uc.user_id, uc.card_id, c.rarity,
+      (SELECT COUNT(*) FROM user_cards uc2 WHERE uc2.card_id = uc.card_id) as copy_count
+    FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+  `).all() as { user_id: number; card_id: string; rarity: string; copy_count: number }[];
+
+  // Rarity-level averages from recent sales (same window as getUserCollectionValue)
+  const rarityAvgMap = new Map(
+    (db.prepare(`
+      SELECT sub.rarity, AVG(sub.price) as avg_price
+      FROM (
+        SELECT c.rarity, ml.price
+        FROM marketplace_listings ml JOIN cards c ON ml.card_id = c.id
+        WHERE ml.status = 'sold'
+        ORDER BY ml.sold_at DESC LIMIT 350
+      ) sub
+      GROUP BY sub.rarity
+    `).all() as { rarity: string; avg_price: number }[]).map(r => [r.rarity, r.avg_price])
+  );
+
+  // Per-card sales (last 5 per card)
+  const cardSalesMap = new Map(
+    (db.prepare(`
+      SELECT card_id, AVG(price) as avg_price, COUNT(*) as cnt
+      FROM (
+        SELECT card_id, price, ROW_NUMBER() OVER (PARTITION BY card_id ORDER BY sold_at DESC) as rn
+        FROM marketplace_listings WHERE status = 'sold'
+      ) WHERE rn <= 5
       GROUP BY card_id
-    )
-    SELECT
-      u.id,
-      COALESCE(u.csa_name, u.discord_username) as display_name,
-      u.avatar_url,
-      u.csa_id,
-      u.coins,
-      COUNT(uc.id) as card_count,
-      CAST(COALESCE(SUM(
-        CASE c.rarity
-          WHEN 'prismatic' THEN 25000
-          WHEN 'holographic' THEN 6000
-          WHEN 'diamond' THEN 1500
-          WHEN 'platinum' THEN 500
-          WHEN 'gold' THEN 200
-          WHEN 'silver' THEN 80
-          ELSE 40
-        END * MIN(2.5, MAX(1.0, 5.0 / MAX(1.0, CAST(ccc.copies AS REAL))))
-      ), 0) AS INTEGER) as collection_value,
-      CAST(u.coins + COALESCE(SUM(
-        CASE c.rarity
-          WHEN 'prismatic' THEN 25000
-          WHEN 'holographic' THEN 6000
-          WHEN 'diamond' THEN 1500
-          WHEN 'platinum' THEN 500
-          WHEN 'gold' THEN 200
-          WHEN 'silver' THEN 80
-          ELSE 40
-        END * MIN(2.5, MAX(1.0, 5.0 / MAX(1.0, CAST(ccc.copies AS REAL))))
-      ), 0) AS INTEGER) as net_worth
-    FROM users u
-    LEFT JOIN user_cards uc ON u.id = uc.user_id
-    LEFT JOIN cards c ON uc.card_id = c.id
-    LEFT JOIN card_copy_counts ccc ON uc.card_id = ccc.card_id
-    GROUP BY u.id
-    ORDER BY net_worth DESC
-    LIMIT ?
-  `).all(limit) as LeaderboardEntry[];
+    `).all() as { card_id: string; avg_price: number; cnt: number }[])
+      .map(r => [r.card_id, { avg: r.avg_price, cnt: r.cnt }] as [string, { avg: number; cnt: number }])
+  );
+
+  // Active listing counts per card
+  const listingCountsMap = new Map(
+    (db.prepare(`
+      SELECT card_id, COUNT(*) as n FROM marketplace_listings WHERE status = 'active' GROUP BY card_id
+    `).all() as { card_id: string; n: number }[]).map(r => [r.card_id, r.n])
+  );
+
+  // Group cards by user
+  const userCardsMap = new Map<number, { card_id: string; rarity: string; copy_count: number }[]>();
+  for (const c of allCards) {
+    if (!userCardsMap.has(c.user_id)) userCardsMap.set(c.user_id, []);
+    userCardsMap.get(c.user_id)!.push(c);
+  }
+
+  // Same valuation logic as getUserCollectionValue
+  function calcValue(cards: { card_id: string; rarity: string; copy_count: number }[]): number {
+    let total = 0;
+    for (const { card_id, rarity, copy_count } of cards) {
+      const salvage = SALVAGE_VALUES[rarity] ?? 6;
+      const base = BASE_CARD_VALUES[rarity] ?? 10;
+      const sales = cardSalesMap.get(card_id);
+      const rarityAvg = rarityAvgMap.get(rarity);
+
+      let marketEst: number;
+      if (sales && sales.cnt >= 3) {
+        marketEst = rarityAvg ? sales.avg * 0.85 + rarityAvg * 0.15 : sales.avg;
+      } else if (sales) {
+        marketEst = sales.avg * 0.5 + (rarityAvg ?? base) * 0.5;
+      } else if (rarityAvg) {
+        marketEst = rarityAvg * 0.7 + base * 0.3;
+      } else {
+        marketEst = base;
+      }
+
+      const supplyFactor =
+        copy_count <= 1  ? 1.15 :
+        copy_count <= 3  ? 1.05 :
+        copy_count <= 10 ? 1.0  :
+        copy_count <= 25 ? 0.95 :
+        copy_count <= 50 ? 0.90 :
+        0.85;
+
+      const listedCount = listingCountsMap.get(card_id) ?? 0;
+      const listingPressure = copy_count > 0 ? listedCount / copy_count : 0;
+      const listingDiscount =
+        listingPressure > 0.5 ? 0.85 :
+        listingPressure > 0.3 ? 0.92 :
+        1.0;
+
+      total += Math.max(salvage, marketEst * supplyFactor * listingDiscount);
+    }
+    return Math.round(total);
+  }
+
+  return users
+    .map(user => {
+      const cards = userCardsMap.get(user.id) ?? [];
+      const collection_value = calcValue(cards);
+      return {
+        id: user.id,
+        display_name: user.display_name,
+        avatar_url: user.avatar_url,
+        csa_id: user.csa_id,
+        coins: user.coins,
+        card_count: cards.length,
+        collection_value,
+        net_worth: user.coins + collection_value,
+      };
+    })
+    .sort((a, b) => b.net_worth - a.net_worth)
+    .slice(0, limit);
 }
 
 // ---- Featured cards config ----

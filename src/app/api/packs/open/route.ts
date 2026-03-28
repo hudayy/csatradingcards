@@ -29,6 +29,10 @@ export async function POST(request: NextRequest) {
         addCardToPack(packId, card.id, userCardId);
         return { ...card, user_card_id: userCardId };
       });
+      incrementChallengeProgress(user.id, 'daily_open_pack');
+      incrementChallengeProgress(user.id, 'daily_open_3_packs');
+      incrementChallengeProgress(user.id, 'weekly_open_10_packs');
+      if (packType === 'elite') incrementChallengeProgress(user.id, 'weekly_open_elite_pack');
       const updatedUser = getUserById(user.id)!;
       return NextResponse.json({ pack_id: packId, cards: userCards, new_balance: updatedUser.coins });
     } catch (error) {

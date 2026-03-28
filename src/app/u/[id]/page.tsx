@@ -167,7 +167,7 @@ export default function PublicProfilePage() {
         ) : (
           <div
             ref={showcaseRef}
-            style={{ display: 'flex', gap: GAP, justifyContent: 'center', alignItems: 'flex-start', overflow: 'hidden' }}
+            style={{ display: 'flex', gap: GAP, justifyContent: 'center', alignItems: 'flex-start', overflow: 'visible', padding: '1rem' }}
           >
             {showcase.map(card => (
               <div key={card.position} style={{ zoom: cardZoom, flexShrink: 0 }}>

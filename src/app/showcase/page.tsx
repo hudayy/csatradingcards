@@ -1,5 +1,8 @@
+import { redirect } from 'next/navigation';
 import TradingCard from '@/components/TradingCard';
 import { getPlayerPool, getGMPool, RARITY_ORDER, RARITY_STAT_MULTIPLIER, type Rarity, type PlayerPool } from '@/lib/cards';
+import { getUser } from '@/lib/auth';
+import { isAdmin } from '@/lib/db';
 
 function isWorldClass(tier: string | null | undefined): boolean {
   return tier?.toLowerCase().replace(/[\s_]+/g, '') === 'worldclass';
@@ -11,6 +14,9 @@ function avgSalary(entries: PlayerPool[]): number {
 }
 
 export default async function ShowcasePage() {
+  const user = await getUser();
+  if (!user || !isAdmin(user)) redirect('/');
+
   const [pool, gmPool] = await Promise.all([getPlayerPool(), getGMPool()]);
   const randomGM = gmPool.length > 0 ? gmPool[Math.floor(Math.random() * gmPool.length)] : null;
 

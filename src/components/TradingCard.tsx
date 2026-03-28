@@ -254,14 +254,6 @@ export default function TradingCard({ card, onClick, showPrice, size = 'normal' 
             <span className="card-tier-label">{card.tier_name ? card.tier_name.replace(/_/g, ' ').toUpperCase() : 'CONTENDER'}</span>
           </div>
           <div className="card-top-bar-right">
-            {confLogoUrl && (
-              <img
-                src={confLogoUrl}
-                alt={card.franchise_conf || ''}
-                className="card-conf-logo"
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-              />
-            )}
             <span className="card-rarity-badge">{getRarityDisplay(card.rarity)}</span>
           </div>
         </div>

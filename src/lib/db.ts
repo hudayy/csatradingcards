@@ -2374,7 +2374,7 @@ export function getFranchiseLoyaltyRotation(): FranchiseLoyaltyRotation | null {
   const franchises = db.prepare(`
     SELECT DISTINCT franchise_id, franchise_name, franchise_color, franchise_logo_url, franchise_abbr, franchise_conf
     FROM cards
-    WHERE franchise_id IS NOT NULL AND card_type = 'player' AND is_active = 1
+    WHERE franchise_id IS NOT NULL AND card_type = 'player'
     ORDER BY franchise_id ASC
   `).all() as { franchise_id: number; franchise_name: string; franchise_color: string | null; franchise_logo_url: string | null; franchise_abbr: string | null; franchise_conf: string | null }[];
 

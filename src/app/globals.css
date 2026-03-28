@@ -2015,7 +2015,7 @@ body {
 }
 .pv-loyalty-glow {
   position: absolute;
-  width: 110px; height: 110px; border-radius: 50%;
+  width: 130px; height: 130px; border-radius: 50%;
   background: radial-gradient(circle, color-mix(in srgb, var(--fl-color, #22c55e) 30%, transparent) 0%, transparent 70%);
   filter: blur(14px);
   animation: loyaltyGlowPulse 2.5s ease-in-out infinite alternate;
@@ -2026,7 +2026,7 @@ body {
 }
 .pv-loyalty-ring {
   position: absolute;
-  width: 110px; height: 110px; border-radius: 50%;
+  width: 130px; height: 130px; border-radius: 50%;
   border: 2px solid color-mix(in srgb, var(--fl-color, #22c55e) 60%, transparent);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--fl-color, #22c55e) 15%, transparent),
               inset 0 0 0 2px color-mix(in srgb, var(--fl-color, #22c55e) 10%, transparent);

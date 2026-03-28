@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, buyListing } from '@/lib/db';
+import { getUserByDiscordId, buyListing, incrementChallengeProgress, getDb } from '@/lib/db';
 
 export async function POST(
   req: NextRequest,
@@ -26,6 +26,11 @@ export async function POST(
 
   if (!result.success) {
     return NextResponse.json({ error: result.error }, { status: 400 });
+  }
+
+  // Track marketplace earnings challenge for the seller
+  if (result.seller_id && result.price) {
+    incrementChallengeProgress(result.seller_id, 'weekly_earn_1000_market', result.price);
   }
 
   return NextResponse.json({ success: true, new_balance: result.new_balance });

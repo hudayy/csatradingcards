@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import TradingCard from '@/components/TradingCard';
 import Link from 'next/link';
-import { Package, FolderOpen, LogIn, Gem, ArrowLeftRight } from 'lucide-react';
+import { Package, FolderOpen, LogIn, Gem, ArrowLeftRight, Flame, Gift } from 'lucide-react';
 
 interface CardData {
   id: string;
@@ -30,6 +30,9 @@ interface CardData {
 export default function HomePage() {
   const [user, setUser] = useState<{ coins: number } | null>(null);
   const [featuredCards, setFeaturedCards] = useState<CardData[]>([]);
+  const [streak, setStreak] = useState<{ streak: number; claimed_today: boolean; next_milestone: number | null; next_milestone_reward: { coins: number; pack?: string } | null } | null>(null);
+  const [claimingBonus, setClaimingBonus] = useState(false);
+  const [bonusMsg, setBonusMsg] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -41,7 +44,37 @@ export default function HomePage() {
       .then(r => r.json())
       .then(data => { if (data.cards) setFeaturedCards(data.cards); })
       .catch(() => {});
+
+    fetch('/api/streak')
+      .then(r => r.json())
+      .then(data => { if (!data.error) setStreak(data); })
+      .catch(() => {});
   }, []);
+
+  const handleClaimBonus = async () => {
+    setClaimingBonus(true);
+    setBonusMsg(null);
+    try {
+      const res = await fetch('/api/auth/daily-bonus', { method: 'POST' });
+      const data = await res.json();
+      if (data.claimed) {
+        let msg = `+${data.amount} coins claimed!`;
+        if (data.streak > 1) msg += ` (${data.streak}-day streak 🔥)`;
+        if (data.streakBonus) {
+          if (data.streakBonus.coins > 0) msg += ` +${data.streakBonus.coins} streak bonus!`;
+          if (data.streakBonus.pack) msg += ` + 1 ${data.streakBonus.pack} pack!`;
+        }
+        setBonusMsg(msg);
+        setStreak(s => s ? { ...s, claimed_today: true, streak: data.streak } : s);
+        setUser(u => u ? { ...u, coins: data.newBalance } : u);
+      } else {
+        setBonusMsg('Already claimed today.');
+      }
+    } catch {
+      setBonusMsg('Failed to claim bonus.');
+    }
+    setClaimingBonus(false);
+  };
 
   return (
     <>
@@ -66,6 +99,32 @@ export default function HomePage() {
             <a href="/api/auth/discord" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><LogIn size={18} /> Login with Discord</a>
           )}
         </div>
+
+        {user && streak !== null && (
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '1rem', marginTop: '1rem',
+            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 'var(--radius-lg)', padding: '0.75rem 1.25rem', flexWrap: 'wrap', justifyContent: 'center',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Flame size={18} style={{ color: streak.streak > 0 ? '#f97316' : 'var(--text-secondary)' }} />
+              <span style={{ fontWeight: 700 }}>{streak.streak}</span>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                day streak{streak.next_milestone ? ` — ${streak.next_milestone - streak.streak} to next reward` : ''}
+              </span>
+            </div>
+            <button
+              className={`btn ${streak.claimed_today ? 'btn-secondary' : 'btn-primary'}`}
+              onClick={handleClaimBonus}
+              disabled={streak.claimed_today || claimingBonus}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.4rem 0.9rem' }}
+            >
+              <Gift size={15} />
+              {streak.claimed_today ? 'Bonus Claimed' : claimingBonus ? 'Claiming...' : 'Claim Daily Bonus'}
+            </button>
+            {bonusMsg && <span style={{ fontSize: '0.85rem', color: 'var(--accent-green)' }}>{bonusMsg}</span>}
+          </div>
+        )}
 
         <div className="featured-cards">
           {featuredCards.map(card => (

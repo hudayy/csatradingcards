@@ -24,6 +24,27 @@ interface CardData {
   user_card_id?: number;
 }
 
+function useResetCountdown(): string {
+  const [countdown, setCountdown] = useState('');
+  useEffect(() => {
+    function calc() {
+      const now = new Date();
+      // Next UTC midnight
+      const nextReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+      const diff = nextReset.getTime() - now.getTime();
+      if (diff <= 0) { setCountdown('00:00:00'); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    }
+    calc();
+    const id = setInterval(calc, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return countdown;
+}
+
 export default function PacksPage() {
   const [packsRemaining, setPacksRemaining] = useState<number | null>(null);
   const [isOpening, setIsOpening] = useState(false);
@@ -33,6 +54,7 @@ export default function PacksPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [csaId, setCsaId] = useState<number | null>(null);
+  const resetCountdown = useResetCountdown();
   useEffect(() => {
     Promise.all([
       fetch('/api/auth/me').then(r => r.json()),
@@ -150,7 +172,9 @@ export default function PacksPage() {
 
           <div className="pack-remaining">
             {packsRemaining !== null ? (
-              <><strong>{packsRemaining}</strong> free pack{packsRemaining !== 1 ? 's' : ''} remaining today</>
+              packsRemaining > 0
+                ? <><strong>{packsRemaining}</strong> free pack{packsRemaining !== 1 ? 's' : ''} remaining today</>
+                : <>Packs reset in <strong>{resetCountdown}</strong> (your local time)</>
             ) : (
               'Loading...'
             )}
@@ -162,7 +186,7 @@ export default function PacksPage() {
             disabled={isOpening || (packsRemaining !== null && packsRemaining <= 0)}
             style={{ fontSize: '1.1rem', padding: '1rem 2.5rem' }}
           >
-            {isOpening ? <><Sparkles size={18} /> Opening...</> : packsRemaining === 0 ? <><Clock size={18} /> Come Back Tomorrow</> : <><Package size={18} /> Open Free Pack</>}
+            {isOpening ? <><Sparkles size={18} /> Opening...</> : packsRemaining === 0 ? <><Clock size={18} /> Resets in {resetCountdown}</> : <><Package size={18} /> Open Free Pack</>}
           </button>
         </div>
       ) : (

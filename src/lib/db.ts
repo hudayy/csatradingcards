@@ -185,9 +185,74 @@ function initializeSchema(db: Database.Database) {
     "ALTER TABLE cards ADD COLUMN card_type TEXT NOT NULL DEFAULT 'player'",
     'ALTER TABLE trades ADD COLUMN expires_at DATETIME',
     'ALTER TABLE marketplace_listings ADD COLUMN expires_at DATETIME',
+    'ALTER TABLE users ADD COLUMN login_streak INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE users ADD COLUMN last_login_date TEXT',
   ]) {
     try { db.exec(col); } catch { /* already exists */ }
   }
+
+  // New tables for features
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS full_set_rewards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      player_csa_id INTEGER NOT NULL,
+      season_id INTEGER NOT NULL,
+      claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      coins_rewarded INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(user_id, player_csa_id, season_id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS challenges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      key TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      reward_coins INTEGER NOT NULL DEFAULT 0,
+      reward_pack_type TEXT,
+      target INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS user_challenges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      challenge_id INTEGER NOT NULL,
+      period_key TEXT NOT NULL,
+      progress INTEGER NOT NULL DEFAULT 0,
+      completed INTEGER NOT NULL DEFAULT 0,
+      claimed INTEGER NOT NULL DEFAULT 0,
+      completed_at DATETIME,
+      claimed_at DATETIME,
+      UNIQUE(user_id, challenge_id, period_key),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (challenge_id) REFERENCES challenges(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS shop_slots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slot_key TEXT NOT NULL,
+      item_type TEXT NOT NULL,
+      pack_type TEXT,
+      coin_amount INTEGER,
+      price INTEGER NOT NULL,
+      rotation_starts DATETIME NOT NULL,
+      rotation_ends DATETIME NOT NULL,
+      stock INTEGER,
+      sold_count INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS shop_purchases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      slot_id INTEGER NOT NULL,
+      purchased_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      price INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (slot_id) REFERENCES shop_slots(id)
+    );
+  `);
 
   // Back-fill expires_at for trades that don't have it (7 day TTL)
   db.exec(`UPDATE trades SET expires_at = datetime(created_at, '+7 days') WHERE expires_at IS NULL AND status = 'pending'`);
@@ -278,6 +343,9 @@ export interface User {
   is_admin: number;
   created_at: string;
   last_login: string;
+  login_streak: number;
+  last_login_date: string | null;
+  last_daily_bonus: string | null;
 }
 
 export const SUPER_ADMIN_CSA_ID = 121;
@@ -617,13 +685,17 @@ export function getActiveListings(filters?: {
   return database.prepare(query).all(...params) as ListingWithDetails[];
 }
 
-export function buyListing(listingId: number, buyerId: number): { success: boolean; error?: string; new_balance?: number } {
+export function buyListing(listingId: number, buyerId: number): { success: boolean; error?: string; new_balance?: number; seller_id?: number; price?: number } {
   const database = getDb();
+  let capturedSellerId: number | undefined;
+  let capturedPrice: number | undefined;
 
   try {
     database.transaction(() => {
       const listing = database.prepare('SELECT * FROM marketplace_listings WHERE id = ? AND status = ?').get(listingId, 'active') as MarketplaceListing | undefined;
       if (!listing) throw new Error('Listing not found or already sold');
+      capturedSellerId = listing.seller_id;
+      capturedPrice = listing.price;
 
       if (listing.seller_id === buyerId) throw new Error('Cannot buy your own listing');
 
@@ -651,7 +723,7 @@ export function buyListing(listingId: number, buyerId: number): { success: boole
     })();
 
     const buyerAfter = getUserById(buyerId)!;
-    return { success: true, new_balance: buyerAfter.coins };
+    return { success: true, new_balance: buyerAfter.coins, seller_id: capturedSellerId, price: capturedPrice };
   } catch (e) {
     return { success: false, error: (e as Error).message };
   }
@@ -682,18 +754,51 @@ export function recordCoinTransaction(userId: number, amount: number, balanceAft
 
 export const DAILY_BONUS_AMOUNT = 500;
 
-export function claimDailyBonus(userId: number): { claimed: boolean; amount: number; newBalance: number } {
+// Streak milestones: day -> { coins, pack }
+const STREAK_MILESTONES: Record<number, { coins: number; pack?: string }> = {
+  3:   { coins: 200 },
+  7:   { coins: 500, pack: 'standard' },
+  14:  { coins: 0,   pack: 'elite' },
+  30:  { coins: 1000, pack: 'apex' },
+  100: { coins: 2000, pack: 'apex' },
+};
+
+export function claimDailyBonus(userId: number): {
+  claimed: boolean; amount: number; newBalance: number;
+  streak: number; streakBonus: { coins: number; pack?: string } | null;
+} {
   const database = getDb();
   const today = new Date().toISOString().split('T')[0];
+  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
   const user = getUserById(userId);
-  if (!user) return { claimed: false, amount: 0, newBalance: 0 };
-  if ((user as User & { last_daily_bonus: string | null }).last_daily_bonus === today) {
-    return { claimed: false, amount: 0, newBalance: user.coins };
+  if (!user) return { claimed: false, amount: 0, newBalance: 0, streak: 0, streakBonus: null };
+  if (user.last_daily_bonus === today) {
+    return { claimed: false, amount: 0, newBalance: user.coins, streak: user.login_streak ?? 0, streakBonus: null };
   }
-  database.prepare('UPDATE users SET coins = coins + ?, last_daily_bonus = ? WHERE id = ?').run(DAILY_BONUS_AMOUNT, today, userId);
+
+  // Update streak: +1 if claimed yesterday, reset to 1 otherwise
+  const newStreak = user.last_login_date === yesterday ? (user.login_streak ?? 0) + 1 : 1;
+
+  database.prepare('UPDATE users SET coins = coins + ?, last_daily_bonus = ?, login_streak = ?, last_login_date = ? WHERE id = ?')
+    .run(DAILY_BONUS_AMOUNT, today, newStreak, today, userId);
   const updated = getUserById(userId)!;
-  recordCoinTransaction(userId, DAILY_BONUS_AMOUNT, updated.coins, 'daily_bonus', 'Daily login bonus');
-  return { claimed: true, amount: DAILY_BONUS_AMOUNT, newBalance: updated.coins };
+  recordCoinTransaction(userId, DAILY_BONUS_AMOUNT, updated.coins, 'daily_bonus', `Daily login bonus (${newStreak}-day streak)`);
+
+  // Check streak milestone
+  const streakBonus = STREAK_MILESTONES[newStreak] ?? null;
+  if (streakBonus) {
+    if (streakBonus.coins > 0) {
+      database.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(streakBonus.coins, userId);
+      const afterBonus = getUserById(userId)!;
+      recordCoinTransaction(userId, streakBonus.coins, afterBonus.coins, 'reward', `${newStreak}-day streak bonus`);
+    }
+    if (streakBonus.pack) {
+      addToPackInventory(userId, streakBonus.pack);
+    }
+  }
+
+  const finalUser = getUserById(userId)!;
+  return { claimed: true, amount: DAILY_BONUS_AMOUNT, newBalance: finalUser.coins, streak: newStreak, streakBonus };
 }
 
 // ---- Pack Inventory ----
@@ -1145,12 +1250,14 @@ export function createTrade(senderId: number, receiverId: number, senderCardIds:
   if (senderCoins > 0 && (!sender || sender.coins < senderCoins)) throw new Error('Not enough coins to offer');
 
   for (const id of senderCardIds) {
-    const card = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(id, senderId);
-    if (!card) throw new Error('Sender card not found or is listed');
+    const card = database.prepare('SELECT uc.*, c.player_name, c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.id = ?').get(id) as (UserCard & { player_name: string; rarity: string }) | undefined;
+    if (!card || card.user_id !== senderId) throw new Error(`Card not found in your collection (ID ${id})`);
+    if (card.is_listed) throw new Error(`"${card.player_name}" (${card.rarity}) is listed on the marketplace and cannot be traded`);
   }
   for (const id of receiverCardIds) {
-    const card = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(id, receiverId);
-    if (!card) throw new Error('Receiver card not found or is listed');
+    const card = database.prepare('SELECT uc.*, c.player_name, c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.id = ?').get(id) as (UserCard & { player_name: string; rarity: string }) | undefined;
+    if (!card || card.user_id !== receiverId) throw new Error(`Requested card not found in their collection (ID ${id})`);
+    if (card.is_listed) throw new Error(`"${card.player_name}" (${card.rarity}) is listed on the marketplace and cannot be traded`);
   }
 
   let tradeId: number;
@@ -1181,11 +1288,11 @@ export function acceptTrade(tradeId: number, userId: number): { success: boolean
 
       for (const card of senderCards) {
         const current = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(card.user_card_id, trade.sender_id);
-        if (!current) throw new Error('Sender no longer owns one of the trade cards');
+        if (!current) throw new Error(`Sender no longer owns "${card.player_name}" (${card.rarity}) or it was listed on the marketplace`);
       }
       for (const card of receiverCards) {
         const current = database.prepare('SELECT * FROM user_cards WHERE id = ? AND user_id = ? AND is_listed = 0').get(card.user_card_id, trade.receiver_id);
-        if (!current) throw new Error('Receiver no longer owns one of the trade cards');
+        if (!current) throw new Error(`You no longer own "${card.player_name}" (${card.rarity}) or it was listed on the marketplace`);
       }
 
       // Validate coin balances before transferring
@@ -1660,4 +1767,286 @@ export function searchCardsForAdmin(query: string, limit = 20): Pick<Card,
       player_name
     LIMIT ?
   `).all(`%${query}%`, limit) as any[];
+}
+
+// ---- Full Set Rewards ----
+
+const ALL_RARITIES = ['bronze','silver','gold','platinum','diamond','holographic','prismatic'];
+export const FULL_SET_REWARD_COINS = 5000;
+
+export interface FullSetStatus {
+  player_csa_id: number;
+  player_name: string;
+  season_id: number;
+  season_number: number;
+  franchise_name: string | null;
+  franchise_color: string | null;
+  player_avatar_url: string | null;
+  owned_rarities: string[];
+  is_complete: boolean;
+  already_claimed: boolean;
+}
+
+export function getFullSetStatuses(userId: number): FullSetStatus[] {
+  const db = getDb();
+
+  // Get all distinct player+season combos the user has at least 1 card for
+  const players = db.prepare(`
+    SELECT DISTINCT c.player_csa_id, c.player_name, c.season_id, c.season_number,
+      c.franchise_name, c.franchise_color, c.player_avatar_url
+    FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+    WHERE uc.user_id = ? AND c.card_type = 'player'
+  `).all(userId) as { player_csa_id: number; player_name: string; season_id: number; season_number: number; franchise_name: string | null; franchise_color: string | null; player_avatar_url: string | null }[];
+
+  return players.map(p => {
+    const ownedRarities = (db.prepare(`
+      SELECT DISTINCT c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+      WHERE uc.user_id = ? AND c.player_csa_id = ? AND c.season_id = ?
+    `).all(userId, p.player_csa_id, p.season_id) as { rarity: string }[]).map(r => r.rarity);
+
+    const isComplete = ALL_RARITIES.every(r => ownedRarities.includes(r));
+    const claimed = db.prepare('SELECT id FROM full_set_rewards WHERE user_id = ? AND player_csa_id = ? AND season_id = ?').get(userId, p.player_csa_id, p.season_id);
+
+    return {
+      ...p,
+      owned_rarities: ownedRarities,
+      is_complete: isComplete,
+      already_claimed: !!claimed,
+    };
+  }).filter(p => p.owned_rarities.length >= 2); // only show if at least 2 rarities owned
+}
+
+export function claimFullSetReward(userId: number, playerCsaId: number, seasonId: number): { coins: number; newBalance: number } {
+  const db = getDb();
+
+  const owned = (db.prepare(`
+    SELECT DISTINCT c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+    WHERE uc.user_id = ? AND c.player_csa_id = ? AND c.season_id = ?
+  `).all(userId, playerCsaId, seasonId) as { rarity: string }[]).map(r => r.rarity);
+
+  if (!ALL_RARITIES.every(r => owned.includes(r))) throw new Error('You do not own all 7 rarities for this player');
+
+  const alreadyClaimed = db.prepare('SELECT id FROM full_set_rewards WHERE user_id = ? AND player_csa_id = ? AND season_id = ?').get(userId, playerCsaId, seasonId);
+  if (alreadyClaimed) throw new Error('Reward already claimed for this set');
+
+  db.transaction(() => {
+    db.prepare('INSERT INTO full_set_rewards (user_id, player_csa_id, season_id, coins_rewarded) VALUES (?, ?, ?, ?)').run(userId, playerCsaId, seasonId, FULL_SET_REWARD_COINS);
+    db.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(FULL_SET_REWARD_COINS, userId);
+  })();
+
+  const updated = getUserById(userId)!;
+  recordCoinTransaction(userId, FULL_SET_REWARD_COINS, updated.coins, 'reward', `Full set reward: player ${playerCsaId} season ${seasonId}`);
+  return { coins: FULL_SET_REWARD_COINS, newBalance: updated.coins };
+}
+
+// ---- Challenges ----
+
+export interface Challenge {
+  id: number;
+  type: string;
+  key: string;
+  title: string;
+  description: string;
+  reward_coins: number;
+  reward_pack_type: string | null;
+  target: number;
+}
+
+export interface UserChallengeProgress {
+  id: number;
+  challenge_id: number;
+  period_key: string;
+  progress: number;
+  completed: number;
+  claimed: number;
+  completed_at: string | null;
+  claimed_at: string | null;
+}
+
+export type ChallengeWithProgress = Challenge & { progress: number; completed: boolean; claimed: boolean; period_key: string };
+
+function getDailyPeriodKey(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+function getWeeklyPeriodKey(): string {
+  const d = new Date();
+  const startOfYear = new Date(d.getUTCFullYear(), 0, 1);
+  const weekNum = Math.ceil(((d.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getUTCDay() + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+export function seedChallenges(): void {
+  const db = getDb();
+  const defaults: Omit<Challenge, 'id'>[] = [
+    { type: 'daily', key: 'daily_open_pack', title: 'Pack Opener', description: 'Open 1 pack today', reward_coins: 50, reward_pack_type: null, target: 1 },
+    { type: 'daily', key: 'daily_open_3_packs', title: 'Triple Pack', description: 'Open 3 packs today', reward_coins: 150, reward_pack_type: null, target: 3 },
+    { type: 'daily', key: 'daily_list_card', title: 'Merchant', description: 'List 1 card on the marketplace', reward_coins: 30, reward_pack_type: null, target: 1 },
+    { type: 'daily', key: 'daily_salvage_5', title: 'Recycler', description: 'Salvage 5 cards', reward_coins: 75, reward_pack_type: null, target: 5 },
+    { type: 'weekly', key: 'weekly_open_10_packs', title: 'Pack Addict', description: 'Open 10 packs this week', reward_coins: 400, reward_pack_type: null, target: 10 },
+    { type: 'weekly', key: 'weekly_complete_trade', title: 'Trader', description: 'Complete 1 trade this week', reward_coins: 300, reward_pack_type: null, target: 1 },
+    { type: 'weekly', key: 'weekly_earn_1000_market', title: 'Hustler', description: 'Earn 1000+ coins from marketplace sales', reward_coins: 500, reward_pack_type: null, target: 1000 },
+    { type: 'weekly', key: 'weekly_open_elite_pack', title: 'Elite Status', description: 'Open 1 Prestige pack', reward_coins: 200, reward_pack_type: 'standard', target: 1 },
+  ];
+  for (const c of defaults) {
+    db.prepare(`INSERT OR IGNORE INTO challenges (type, key, title, description, reward_coins, reward_pack_type, target) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(c.type, c.key, c.title, c.description, c.reward_coins, c.reward_pack_type, c.target);
+  }
+}
+
+export function getChallengesForUser(userId: number): ChallengeWithProgress[] {
+  seedChallenges();
+  const db = getDb();
+  const dailyKey = getDailyPeriodKey();
+  const weeklyKey = getWeeklyPeriodKey();
+
+  const challenges = db.prepare('SELECT * FROM challenges').all() as Challenge[];
+  return challenges.map(c => {
+    const periodKey = c.type === 'daily' ? dailyKey : weeklyKey;
+    const progress = db.prepare('SELECT * FROM user_challenges WHERE user_id = ? AND challenge_id = ? AND period_key = ?').get(userId, c.id, periodKey) as UserChallengeProgress | undefined;
+    return {
+      ...c,
+      period_key: periodKey,
+      progress: progress?.progress ?? 0,
+      completed: !!(progress?.completed),
+      claimed: !!(progress?.claimed),
+    };
+  });
+}
+
+export function incrementChallengeProgress(userId: number, challengeKey: string, amount = 1): void {
+  const db = getDb();
+  const challenge = db.prepare("SELECT * FROM challenges WHERE key = ?").get(challengeKey) as Challenge | undefined;
+  if (!challenge) return;
+
+  const periodKey = challenge.type === 'daily' ? getDailyPeriodKey() : getWeeklyPeriodKey();
+
+  db.prepare(`
+    INSERT INTO user_challenges (user_id, challenge_id, period_key, progress, completed)
+    VALUES (?, ?, ?, ?, 0)
+    ON CONFLICT(user_id, challenge_id, period_key) DO UPDATE SET
+      progress = MIN(user_challenges.progress + ?, challenges.target),
+      completed = CASE WHEN user_challenges.progress + ? >= challenges.target THEN 1 ELSE user_challenges.completed END,
+      completed_at = CASE WHEN user_challenges.completed = 0 AND user_challenges.progress + ? >= challenges.target THEN CURRENT_TIMESTAMP ELSE user_challenges.completed_at END
+  `).run(userId, challenge.id, periodKey, Math.min(amount, challenge.target), amount, amount, amount);
+}
+
+export function claimChallengeReward(userId: number, challengeId: number, periodKey: string): { coins: number; pack?: string; newBalance: number } {
+  const db = getDb();
+  const challenge = db.prepare('SELECT * FROM challenges WHERE id = ?').get(challengeId) as Challenge | undefined;
+  if (!challenge) throw new Error('Challenge not found');
+
+  const progress = db.prepare('SELECT * FROM user_challenges WHERE user_id = ? AND challenge_id = ? AND period_key = ?').get(userId, challengeId, periodKey) as UserChallengeProgress | undefined;
+  if (!progress?.completed) throw new Error('Challenge not completed');
+  if (progress.claimed) throw new Error('Reward already claimed');
+
+  db.transaction(() => {
+    db.prepare('UPDATE user_challenges SET claimed = 1, claimed_at = CURRENT_TIMESTAMP WHERE user_id = ? AND challenge_id = ? AND period_key = ?').run(userId, challengeId, periodKey);
+    if (challenge.reward_coins > 0) {
+      db.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(challenge.reward_coins, userId);
+    }
+    if (challenge.reward_pack_type) {
+      db.prepare('INSERT INTO pack_inventory (user_id, pack_type) VALUES (?, ?)').run(userId, challenge.reward_pack_type);
+    }
+  })();
+
+  const updated = getUserById(userId)!;
+  if (challenge.reward_coins > 0) {
+    recordCoinTransaction(userId, challenge.reward_coins, updated.coins, 'reward', `Challenge reward: ${challenge.title}`);
+  }
+  return { coins: challenge.reward_coins, pack: challenge.reward_pack_type ?? undefined, newBalance: updated.coins };
+}
+
+// ---- Rotating Shop ----
+
+export interface ShopSlot {
+  id: number;
+  slot_key: string;
+  item_type: string;
+  pack_type: string | null;
+  coin_amount: number | null;
+  price: number;
+  rotation_starts: string;
+  rotation_ends: string;
+  stock: number | null;
+  sold_count: number;
+}
+
+export function getActiveShopSlots(): ShopSlot[] {
+  return getDb().prepare(`
+    SELECT * FROM shop_slots
+    WHERE rotation_starts <= CURRENT_TIMESTAMP AND rotation_ends > CURRENT_TIMESTAMP
+    ORDER BY slot_key
+  `).all() as ShopSlot[];
+}
+
+export function seedShopRotation(): void {
+  const db = getDb();
+
+  // Check if there are any active slots; if not, generate new ones
+  const active = db.prepare(`SELECT COUNT(*) as n FROM shop_slots WHERE rotation_ends > CURRENT_TIMESTAMP`).get() as { n: number };
+  if (active.n > 0) return;
+
+  // Daily rotation: resets every day at UTC midnight
+  // Weekly rotation: resets every Monday at UTC midnight
+  const now = new Date();
+  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const tomorrowStart = new Date(todayStart.getTime() + 86400000);
+
+  // Get next Monday
+  const daysUntilMonday = (8 - now.getUTCDay()) % 7 || 7;
+  const nextMonday = new Date(todayStart.getTime() + daysUntilMonday * 86400000);
+
+  const dailyItems = [
+    { slot_key: 'daily_1', item_type: 'pack', pack_type: 'standard', price: 150 },
+    { slot_key: 'daily_2', item_type: 'pack', pack_type: 'elite', price: 220 },
+    { slot_key: 'daily_3', item_type: 'coins', coin_amount: 500, price: 400 },
+  ];
+  const weeklyItems = [
+    { slot_key: 'weekly_1', item_type: 'pack', pack_type: 'apex', price: 1200 },
+    { slot_key: 'weekly_2', item_type: 'pack', pack_type: 'elite', price: 180, stock: 5 },
+    { slot_key: 'weekly_3', item_type: 'coins', coin_amount: 2000, price: 1500, stock: 3 },
+  ];
+
+  const insertSlot = db.prepare(`INSERT INTO shop_slots (slot_key, item_type, pack_type, coin_amount, price, rotation_starts, rotation_ends, stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+
+  db.transaction(() => {
+    for (const item of dailyItems) {
+      insertSlot.run(item.slot_key, item.item_type, (item as { pack_type?: string }).pack_type ?? null, (item as { coin_amount?: number }).coin_amount ?? null, item.price, todayStart.toISOString(), tomorrowStart.toISOString(), null);
+    }
+    for (const item of weeklyItems) {
+      insertSlot.run(item.slot_key, item.item_type, (item as { pack_type?: string }).pack_type ?? null, (item as { coin_amount?: number }).coin_amount ?? null, item.price, todayStart.toISOString(), nextMonday.toISOString(), (item as { stock?: number }).stock ?? null);
+    }
+  })();
+}
+
+export function purchaseShopSlot(userId: number, slotId: number): { item_type: string; pack_type?: string; coin_amount?: number; newBalance: number } {
+  const db = getDb();
+
+  const slot = db.prepare(`SELECT * FROM shop_slots WHERE id = ? AND rotation_starts <= CURRENT_TIMESTAMP AND rotation_ends > CURRENT_TIMESTAMP`).get(slotId) as ShopSlot | undefined;
+  if (!slot) throw new Error('Shop item not available');
+  if (slot.stock !== null && slot.sold_count >= slot.stock) throw new Error('This item is sold out');
+
+  const user = getUserById(userId);
+  if (!user) throw new Error('User not found');
+  if (user.coins < slot.price) throw new Error('Not enough coins');
+
+  db.transaction(() => {
+    db.prepare('UPDATE users SET coins = coins - ? WHERE id = ?').run(slot.price, userId);
+    db.prepare('UPDATE shop_slots SET sold_count = sold_count + 1 WHERE id = ?').run(slotId);
+    db.prepare('INSERT INTO shop_purchases (user_id, slot_id, price) VALUES (?, ?, ?)').run(userId, slotId, slot.price);
+
+    if (slot.item_type === 'pack' && slot.pack_type) {
+      db.prepare('INSERT INTO pack_inventory (user_id, pack_type) VALUES (?, ?)').run(userId, slot.pack_type);
+    } else if (slot.item_type === 'coins' && slot.coin_amount) {
+      db.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(slot.coin_amount, userId);
+    }
+  })();
+
+  const updated = getUserById(userId)!;
+  recordCoinTransaction(userId, -slot.price, updated.coins, 'pack_purchase', `Shop purchase: ${slot.slot_key}`);
+  if (slot.item_type === 'coins' && slot.coin_amount) {
+    recordCoinTransaction(userId, slot.coin_amount, updated.coins + slot.coin_amount, 'reward', `Shop coins: ${slot.slot_key}`);
+  }
+
+  return { item_type: slot.item_type, pack_type: slot.pack_type ?? undefined, coin_amount: slot.coin_amount ?? undefined, newBalance: updated.coins };
 }

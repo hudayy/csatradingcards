@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, getActiveListings, createListing, getUserCardById, getActiveListingByUserCardId, cancelListing } from '@/lib/db';
+import { getUserByDiscordId, getActiveListings, createListing, getUserCardById, getActiveListingByUserCardId, cancelListing, incrementChallengeProgress } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
   const url = req.nextUrl;
@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
   }
 
   const listingId = createListing(user.id, user_card_id, userCard.card_id, price);
+  incrementChallengeProgress(user.id, 'daily_list_card');
 
   return NextResponse.json({ listing_id: listingId, success: true });
 }

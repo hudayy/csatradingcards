@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, getUserById, getPacksOpenedToday, incrementPacksOpened, createPack, addCardToUser, addCardToPack, isAdmin, updateCoins, recordCoinTransaction, consumeInventoryPack } from '@/lib/db';
+import { getUserByDiscordId, getUserById, getPacksOpenedToday, incrementPacksOpened, createPack, addCardToUser, addCardToPack, isAdmin, updateCoins, recordCoinTransaction, consumeInventoryPack, incrementChallengeProgress } from '@/lib/db';
 import { generatePackCards, PACK_CONFIGS, type PackType } from '@/lib/cards';
 
 const DAILY_FREE_PACKS = parseInt(process.env.DAILY_FREE_PACKS || '3', 10);
@@ -70,6 +70,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (!isPaid && !isDevMode) incrementPacksOpened(user.id);
+
+    // Challenge progress
+    if (!isDevMode) {
+      incrementChallengeProgress(user.id, 'daily_open_pack');
+      incrementChallengeProgress(user.id, 'daily_open_3_packs');
+      incrementChallengeProgress(user.id, 'weekly_open_10_packs');
+      if (packType === 'elite') incrementChallengeProgress(user.id, 'weekly_open_elite_pack');
+    }
 
     const updatedUser = getUserById(user.id)!;
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, salvageCard, bulkSalvageCards } from '@/lib/db';
+import { getUserByDiscordId, salvageCard, bulkSalvageCards, incrementChallengeProgress } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
     if (body.user_card_ids.length === 0) return NextResponse.json({ error: 'No cards selected' }, { status: 400 });
     try {
       const result = bulkSalvageCards(user.id, body.user_card_ids);
+      incrementChallengeProgress(user.id, 'daily_salvage_5', result.count);
       return NextResponse.json({ success: true, coins: result.totalCoins, new_balance: result.newBalance, count: result.count });
     } catch (e: unknown) {
       return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to salvage' }, { status: 400 });
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = salvageCard(user.id, user_card_id);
+    incrementChallengeProgress(user.id, 'daily_salvage_5');
     return NextResponse.json({ success: true, ...result, new_balance: result.newBalance });
   } catch (e: unknown) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed to salvage' }, { status: 400 });

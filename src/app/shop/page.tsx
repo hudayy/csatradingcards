@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Coins, Package, FolderOpen, ShoppingBag, Zap, Crown, Gem, ChevronLeft, LogIn } from 'lucide-react';
+import { Coins, Package, FolderOpen, ShoppingBag, Zap, Crown, Gem, ChevronLeft, LogIn, RefreshCw, Clock } from 'lucide-react';
 import TradingCard from '@/components/TradingCard';
 import { PACK_CONFIGS, type PackType } from '@/lib/pack-config';
 
@@ -63,19 +63,53 @@ export default function ShopPage() {
   const [revealedCards, setRevealedCards] = useState<CardData[]>([]);
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [shopSlots, setShopSlots] = useState<{ id: number; slot_key: string; item_type: string; pack_type: string | null; coin_amount: number | null; price: number; rotation_ends: string; stock: number | null; sold_count: number }[]>([]);
+  const [shopBuying, setShopBuying] = useState<number | null>(null);
+  const [shopMsg, setShopMsg] = useState<string | null>(null);
+
   useEffect(() => {
     Promise.all([
       fetch('/api/auth/me').then(r => r.json()),
       fetch('/api/packs/status').then(r => r.json()),
-    ]).then(([auth, packs]) => {
+      fetch('/api/shop').then(r => r.json()),
+    ]).then(([auth, packs, shopData]) => {
       if (auth.user) {
         setIsLoggedIn(true);
         setCoins(auth.user.coins);
         if (packs.packs_remaining !== undefined) setPacksRemaining(packs.packs_remaining);
       }
+      if (shopData.slots) setShopSlots(shopData.slots);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
+
+  const handleShopBuy = async (slotId: number, price: number) => {
+    if (shopBuying !== null) return;
+    setShopBuying(slotId);
+    setShopMsg(null);
+    try {
+      const res = await fetch('/api/shop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slot_id: slotId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        let msg = `Purchased!`;
+        if (data.item_type === 'pack') msg = `${data.pack_type} pack added to your inventory!`;
+        if (data.item_type === 'coins') msg = `${data.coin_amount?.toLocaleString()} coins added!`;
+        setShopMsg(msg);
+        setCoins(data.newBalance);
+        window.dispatchEvent(new CustomEvent('coinsUpdated', { detail: { balance: data.newBalance } }));
+        setShopSlots(prev => prev.map(s => s.id === slotId ? { ...s, sold_count: s.sold_count + 1 } : s));
+      } else {
+        setShopMsg(data.error || 'Purchase failed');
+      }
+    } catch {
+      setShopMsg('Network error');
+    }
+    setShopBuying(null);
+  };
 
   const handleBuy = async (packType: PackType) => {
     if (purchasing) return;
@@ -270,6 +304,62 @@ export default function ShopPage() {
       <div style={{ textAlign: 'center', marginTop: '1rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
         Earn coins by selling cards on the marketplace, completing trades, and collecting your daily login bonus.
       </div>
+
+      {/* ── Rotating Deals ── */}
+      {shopSlots.length > 0 && (
+        <div style={{ marginTop: '3rem' }}>
+          <h2 style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <RefreshCw size={16} style={{ color: '#818cf8' }} /> Rotating Deals
+          </h2>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>Limited-time offers that refresh daily and weekly.</p>
+          {shopMsg && <div style={{ padding: '0.65rem', background: 'rgba(72,199,116,0.1)', border: '1px solid var(--accent-green)', borderRadius: 'var(--radius-md)', color: 'var(--accent-green)', marginBottom: '1rem', fontSize: '0.85rem' }}>{shopMsg}</div>}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+            {shopSlots.map(slot => {
+              const isSoldOut = slot.stock !== null && slot.sold_count >= slot.stock;
+              const canAfford = coins !== null && coins >= slot.price;
+              const endsAt = new Date(slot.rotation_ends);
+              const isDaily = slot.slot_key.startsWith('daily');
+              return (
+                <div key={slot.id} style={{
+                  background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-lg)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem',
+                  opacity: isSoldOut ? 0.5 : 1,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{
+                      fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
+                      padding: '0.15rem 0.5rem', borderRadius: 4,
+                      background: isDaily ? 'rgba(249,115,22,0.2)' : 'rgba(129,140,248,0.2)',
+                      color: isDaily ? '#f97316' : '#818cf8',
+                    }}>{isDaily ? 'Daily' : 'Weekly'}</span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <Clock size={11} /> {endsAt.toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                    {slot.item_type === 'pack' ? `${slot.pack_type?.charAt(0).toUpperCase()}${slot.pack_type?.slice(1)} Pack` : `${slot.coin_amount?.toLocaleString()} Coins`}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    {slot.item_type === 'pack' ? '5 cards' : 'Bonus coins'}
+                    {slot.stock !== null && ` · ${slot.stock - slot.sold_count} left`}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 700, color: 'var(--accent-gold)', fontSize: '0.9rem' }}>
+                    <Coins size={14} /> {slot.price.toLocaleString()}
+                  </div>
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem', marginTop: '0.25rem' }}
+                    disabled={isSoldOut || !canAfford || shopBuying !== null}
+                    onClick={() => handleShopBuy(slot.id, slot.price)}
+                  >
+                    {isSoldOut ? 'Sold Out' : !canAfford ? 'Not Enough Coins' : shopBuying === slot.id ? 'Buying...' : 'Buy'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

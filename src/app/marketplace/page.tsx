@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import TradingCard from '@/components/TradingCard';
-import { Search, Store, FolderOpen, LogIn, Coins, History } from 'lucide-react';
+import { Search, Store, FolderOpen, LogIn, Coins, History, TrendingUp, TrendingDown, Minus, Zap } from 'lucide-react';
 
 interface ListingData {
   id: number;
@@ -58,8 +58,20 @@ const RARITY_COLORS_HEX: Record<string, string> = {
   platinum: '#e5e4e2', diamond: '#67e8f9', holographic: '#f472b6', prismatic: '#c084fc',
 };
 
+interface RarityTrend {
+  rarity: string; avg_7d: number | null; avg_prev_7d: number | null;
+  avg_30d: number | null; sales_7d: number; sales_30d: number;
+  trend: 'up' | 'down' | 'stable'; pct_change: number | null;
+}
+interface HotCard {
+  player_name: string; rarity: string; franchise_name: string | null;
+  franchise_color: string | null; player_avatar_url: string | null;
+  sales: number; avg_price: number;
+}
+interface MarketVolume { vol_7d: number; vol_30d: number; txns_7d: number; txns_30d: number; }
+
 export default function MarketplacePage() {
-  const [activeTab, setActiveTab] = useState<'browse' | 'history'>('browse');
+  const [activeTab, setActiveTab] = useState<'browse' | 'history' | 'trends'>('browse');
   const [listings, setListings] = useState<ListingData[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRarity, setSelectedRarity] = useState('all');
@@ -74,6 +86,8 @@ export default function MarketplacePage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [selectedListing, setSelectedListing] = useState<ListingData | null>(null);
+  const [trends, setTrends] = useState<{ rarity_trends: RarityTrend[]; hot_cards: HotCard[]; volume: MarketVolume } | null>(null);
+  const [trendsLoading, setTrendsLoading] = useState(false);
 
   const fetchListings = async () => {
     const params = new URLSearchParams();
@@ -94,6 +108,17 @@ export default function MarketplacePage() {
     });
     fetchListings();
   }, []);
+
+  const fetchTrends = async () => {
+    if (trends) return;
+    setTrendsLoading(true);
+    try {
+      const res = await fetch('/api/marketplace/trends');
+      const data = await res.json();
+      if (data.rarity_trends) setTrends(data);
+    } catch { /* ignore */ }
+    setTrendsLoading(false);
+  };
 
   const fetchHistory = async () => {
     setHistoryLoading(true);
@@ -183,6 +208,13 @@ export default function MarketplacePage() {
             <History size={15} /> My History
           </button>
         )}
+        <button
+          className={`filter-btn ${activeTab === 'trends' ? 'active' : ''}`}
+          onClick={() => { setActiveTab('trends'); fetchTrends(); }}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+        >
+          <TrendingUp size={15} /> Market Trends
+        </button>
       </div>
 
       {message && (
@@ -361,6 +393,92 @@ export default function MarketplacePage() {
                 </div>
               </div>
             ))}
+          </div>
+        )
+      )}
+
+      {/* ── MARKET TRENDS TAB ── */}
+      {activeTab === 'trends' && (
+        trendsLoading ? (
+          <div className="loading-spinner"><div className="spinner" /></div>
+        ) : !trends ? (
+          <div className="empty-state">
+            <div className="empty-state-icon"><TrendingUp size={64} /></div>
+            <div className="empty-state-title">No Trend Data Yet</div>
+            <div className="empty-state-text">Market trends will appear once cards start selling.</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+            {/* Volume summary */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem' }}>
+              {[
+                { label: '7-Day Volume', value: `${trends.volume.vol_7d?.toLocaleString() ?? 0} coins` },
+                { label: '30-Day Volume', value: `${trends.volume.vol_30d?.toLocaleString() ?? 0} coins` },
+                { label: '7-Day Sales', value: `${trends.volume.txns_7d ?? 0} sales` },
+                { label: '30-Day Sales', value: `${trends.volume.txns_30d ?? 0} sales` },
+              ].map(s => (
+                <div key={s.label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '1rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>{s.label}</div>
+                  <div style={{ fontWeight: 800, fontSize: '1.1rem' }}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Rarity price trends */}
+            <div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem', fontFamily: 'Orbitron, sans-serif' }}>Price Trends by Rarity</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {['prismatic','holographic','diamond','platinum','gold','silver','bronze'].map(rarity => {
+                  const r = trends.rarity_trends.find(t => t.rarity === rarity);
+                  const color = RARITY_COLORS_HEX[rarity] || '#888';
+                  return (
+                    <div key={rarity} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <div style={{ width: 80, fontSize: '0.8rem', fontWeight: 700, textTransform: 'capitalize', color }}>{rarity}</div>
+                      <div style={{ flex: 1, display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                        {r?.avg_7d ? <span style={{ fontSize: '0.85rem' }}><span style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>7d avg </span>{r.avg_7d.toLocaleString()}</span> : <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No 7d data</span>}
+                        {r?.avg_30d && <span style={{ fontSize: '0.85rem' }}><span style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>30d avg </span>{r.avg_30d.toLocaleString()}</span>}
+                        {r?.sales_7d != null && <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{r.sales_7d} sales this week</span>}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 60, justifyContent: 'flex-end' }}>
+                        {!r || r.trend === 'stable' ? <Minus size={16} style={{ color: 'var(--text-muted)' }} /> : r.trend === 'up' ? <TrendingUp size={16} style={{ color: 'var(--accent-green)' }} /> : <TrendingDown size={16} style={{ color: 'var(--accent-red)' }} />}
+                        {r?.pct_change != null && <span style={{ fontSize: '0.8rem', fontWeight: 700, color: r.trend === 'up' ? 'var(--accent-green)' : r.trend === 'down' ? 'var(--accent-red)' : 'var(--text-muted)' }}>{r.pct_change > 0 ? '+' : ''}{r.pct_change}%</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Hot cards */}
+            {trends.hot_cards.length > 0 && (
+              <div>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem', fontFamily: 'Orbitron, sans-serif', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Zap size={16} style={{ color: '#f97316' }} /> Trending Cards (7 days)
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  {trends.hot_cards.map((c, i) => (
+                    <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '0.65rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', width: 20, textAlign: 'center', fontWeight: 700 }}>#{i + 1}</span>
+                      {c.player_avatar_url
+                        ? <img src={c.player_avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%', border: `2px solid ${RARITY_COLORS_HEX[c.rarity] || '#888'}` }} />
+                        : <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>{c.player_name.charAt(0)}</div>
+                      }
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>{c.player_name}</div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                          <span style={{ color: RARITY_COLORS_HEX[c.rarity] || '#888', fontWeight: 600, textTransform: 'capitalize' }}>{c.rarity}</span>
+                          {c.franchise_name && ` · ${c.franchise_name}`}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.3rem' }}><Coins size={13} /> {c.avg_price.toLocaleString()}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{c.sales} sales</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )
       )}

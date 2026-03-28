@@ -102,6 +102,7 @@ export default function TradesPage() {
   const [theirCoins, setTheirCoins] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [confirmingTrade, setConfirmingTrade] = useState(false);
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -174,10 +175,16 @@ export default function TradesPage() {
     });
   };
 
-  const handleSendTrade = async () => {
-    if (!selectedUser || !selectedTheirCards.size || !selectedMyCards.size) return;
+  const handleSendTrade = () => {
+    if (!canSend) return;
+    setConfirmingTrade(true);
+  };
+
+  const handleConfirmTrade = async () => {
+    if (!selectedUser) return;
     setSubmitting(true);
     setMessage(null);
+    setConfirmingTrade(false);
     try {
       const res = await fetch('/api/trades', {
         method: 'POST',
@@ -473,6 +480,54 @@ export default function TradesPage() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* ── TRADE CONFIRMATION MODAL ── */}
+      {confirmingTrade && selectedUser && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem',
+        }}>
+          <div style={{
+            background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '1.5rem',
+            maxWidth: 500, width: '100%', border: '1px solid rgba(255,255,255,0.1)',
+          }}>
+            <h3 style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.1rem', fontWeight: 700, marginBottom: '1rem' }}>
+              Confirm Trade Offer
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem' }}>
+              You are offering to <strong style={{ color: 'var(--text-primary)' }}>{selectedUser.csa_name || selectedUser.discord_username}</strong>:
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>You give</div>
+                {selectedMyList.map(c => (
+                  <div key={c.user_card_id} style={{ fontSize: '0.85rem', color: 'var(--text-primary)', padding: '0.2rem 0' }}>
+                    {c.player_name} <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>({c.rarity})</span>
+                  </div>
+                ))}
+                {myCoinsNum > 0 && <div style={{ fontSize: '0.85rem', color: 'var(--accent-gold)' }}>{myCoinsNum} coins</div>}
+              </div>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>You receive</div>
+                {selectedTheirList.map(c => (
+                  <div key={c.user_card_id} style={{ fontSize: '0.85rem', color: 'var(--text-primary)', padding: '0.2rem 0' }}>
+                    {c.player_name} <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>({c.rarity})</span>
+                  </div>
+                ))}
+                {theirCoinsNum > 0 && <div style={{ fontSize: '0.85rem', color: 'var(--accent-gold)' }}>{theirCoinsNum} coins</div>}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmingTrade(false)}>
+                <X size={16} /> Cancel
+              </button>
+              <button className="btn btn-primary" onClick={handleConfirmTrade} disabled={submitting}>
+                <Check size={16} /> {submitting ? 'Sending...' : 'Send Offer'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

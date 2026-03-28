@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import TradingCard from '@/components/TradingCard';
-import { FolderOpen, LogIn, Package, Coins, Tag, Flame, ChevronLeft, Layers, ArrowUp, Store, Star, Search, SortAsc } from 'lucide-react';
+import { FolderOpen, LogIn, Package, Coins, Tag, Flame, ChevronLeft, Layers, ArrowUp, Store, Star, Search, SortAsc, Trophy } from 'lucide-react';
 
 interface InventoryPack {
   id: number;
@@ -89,7 +89,7 @@ export default function CollectionPage() {
   const [unlisting, setUnlisting] = useState(false);
   const [salvaging, setSalvaging] = useState(false);
   const [salvageConfirm, setSalvageConfirm] = useState(false);
-  const [activeTab, setActiveTab] = useState<'cards' | 'packs'>('cards');
+  const [activeTab, setActiveTab] = useState<'cards' | 'packs' | 'sets'>('cards');
   const [inventory, setInventory] = useState<InventoryPack[]>([]);
   const [packHistory, setPackHistory] = useState<PackHistoryItem[]>([]);
   const [packsLoading, setPacksLoading] = useState(false);
@@ -117,6 +117,10 @@ export default function CollectionPage() {
   const [showcaseAddMsg, setShowcaseAddMsg] = useState<string | null>(null);
   const [cardValuation, setCardValuation] = useState<{ value: number; basis: string; copy_count: number; recent_sales_count: number; recent_avg: number | null } | null>(null);
   const [valuationLoading, setValuationLoading] = useState(false);
+  // Full sets
+  const [sets, setSets] = useState<{ player_csa_id: number; player_name: string; season_id: number; season_number: number; franchise_name: string | null; franchise_color: string | null; player_avatar_url: string | null; owned_rarities: string[]; is_complete: boolean; already_claimed: boolean }[]>([]);
+  const [setsLoading, setSetsLoading] = useState(false);
+  const [setsMsg, setSetsMsg] = useState<string | null>(null);
 
   const fetchCards = async (opts?: { rarity?: string; search?: string; sort?: string; cardType?: string }) => {
     const params = new URLSearchParams();
@@ -135,6 +139,16 @@ export default function CollectionPage() {
     if (typeof data.totalCards === 'number') setTotalCards(data.totalCards);
   };
 
+  const fetchSets = async () => {
+    setSetsLoading(true);
+    try {
+      const res = await fetch('/api/collection/sets');
+      const data = await res.json();
+      if (data.sets) setSets(data.sets);
+    } catch { /* ignore */ }
+    setSetsLoading(false);
+  };
+
   const fetchPackData = async () => {
     setPacksLoading(true);
     const res = await fetch('/api/collection/packs');
@@ -151,7 +165,6 @@ export default function CollectionPage() {
         if (data.user) {
           setIsLoggedIn(true);
           fetchPackData();
-          fetchCards({ rarity: 'all' }).then(() => setLoading(false));
         } else {
           setLoading(false);
         }
@@ -161,7 +174,7 @@ export default function CollectionPage() {
 
   useEffect(() => {
     if (!isLoggedIn) return;
-    fetchCards({ rarity: selectedRarity, search, sort: sortBy, cardType });
+    fetchCards({ rarity: selectedRarity, search, sort: sortBy, cardType }).then(() => setLoading(false));
   }, [selectedRarity, search, sortBy, cardType, isLoggedIn]);
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -410,6 +423,9 @@ export default function CollectionPage() {
         </button>
         <button className={`collection-tab${activeTab === 'packs' ? ' active' : ''}`} onClick={() => { setActiveTab('packs'); if (!packHistory.length && !inventory.length) fetchPackData(); }}>
           Packs {inventory.length > 0 && <span className="inv-badge">{inventory.length}</span>}
+        </button>
+        <button className={`collection-tab${activeTab === 'sets' ? ' active' : ''}`} onClick={() => { setActiveTab('sets'); if (!sets.length) fetchSets(); }}>
+          Full Sets {sets.filter(s => s.is_complete && !s.already_claimed).length > 0 && <span className="inv-badge">{sets.filter(s => s.is_complete && !s.already_claimed).length}</span>}
         </button>
       </div>
 
@@ -707,6 +723,81 @@ export default function CollectionPage() {
             </>
           )}
         </>
+      )}
+
+      {/* ---- Sets tab ---- */}
+      {activeTab === 'sets' && (
+        setsLoading ? (
+          <div className="loading-spinner"><div className="spinner" /></div>
+        ) : sets.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state-icon"><Trophy size={64} /></div>
+            <div className="empty-state-title">No Sets Yet</div>
+            <div className="empty-state-text">Collect at least 2 different rarities of the same player to start tracking your sets. Complete all 7 rarities (Bronze → Prismatic) to earn a reward!</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {setsMsg && <div style={{ padding: '0.75rem', background: 'rgba(72,199,116,0.1)', border: '1px solid var(--accent-green)', borderRadius: 'var(--radius-md)', color: 'var(--accent-green)', marginBottom: '0.5rem' }}>{setsMsg}</div>}
+            {sets
+              .sort((a, b) => (b.is_complete ? 1 : 0) - (a.is_complete ? 1 : 0) || b.owned_rarities.length - a.owned_rarities.length)
+              .map(s => {
+                const ALL_RARITIES_ORDER = ['bronze','silver','gold','platinum','diamond','holographic','prismatic'];
+                return (
+                  <div key={`${s.player_csa_id}-${s.season_id}`} style={{
+                    background: 'var(--bg-card)', border: `1px solid ${s.is_complete ? 'rgba(72,199,116,0.4)' : 'var(--border-subtle)'}`,
+                    borderRadius: 'var(--radius-lg)', padding: '0.85rem 1rem',
+                    display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap',
+                  }}>
+                    {s.player_avatar_url
+                      ? <img src={s.player_avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', border: `2px solid ${s.franchise_color || 'var(--border-light)'}` }} />
+                      : <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{s.player_name.charAt(0)}</div>
+                    }
+                    <div style={{ flex: 1, minWidth: 120 }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{s.player_name}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Season {s.season_number}{s.franchise_name ? ` · ${s.franchise_name}` : ''}</div>
+                      <div style={{ display: 'flex', gap: '0.2rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                        {ALL_RARITIES_ORDER.map(r => (
+                          <div key={r} style={{
+                            width: 10, height: 10, borderRadius: '50%',
+                            background: s.owned_rarities.includes(r) ? RARITY_COLORS_HEX[r] || '#888' : 'var(--border-subtle)',
+                            boxShadow: s.owned_rarities.includes(r) ? `0 0 4px ${RARITY_COLORS_HEX[r] || '#888'}88` : 'none',
+                            title: r,
+                          }} title={r} />
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', flexShrink: 0 }}>
+                      {s.owned_rarities.length}/7
+                    </div>
+                    {s.is_complete && !s.already_claimed && (
+                      <button
+                        className="btn btn-primary"
+                        style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                        onClick={async () => {
+                          setSetsMsg(null);
+                          try {
+                            const res = await fetch('/api/collection/sets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_csa_id: s.player_csa_id, season_id: s.season_id }) });
+                            const data = await res.json();
+                            if (data.success) {
+                              setSetsMsg(`Claimed ${data.coins.toLocaleString()} coins for completing ${s.player_name}'s full set!`);
+                              setSets(prev => prev.map(x => x.player_csa_id === s.player_csa_id && x.season_id === s.season_id ? { ...x, already_claimed: true } : x));
+                            } else {
+                              setSetsMsg(data.error || 'Failed to claim');
+                            }
+                          } catch { setSetsMsg('Network error'); }
+                        }}
+                      >
+                        <Trophy size={14} /> Claim 5,000 Coins
+                      </button>
+                    )}
+                    {s.already_claimed && <span style={{ fontSize: '0.78rem', color: 'var(--accent-green)', fontWeight: 600 }}>✓ Claimed</span>}
+                    {s.is_complete && !s.already_claimed && <span style={{ fontSize: '0.75rem', color: 'var(--accent-green)', fontWeight: 700 }}>COMPLETE!</span>}
+                  </div>
+                );
+              })
+            }
+          </div>
+        )
       )}
 
       {/* ---- Bulk salvage bar ---- */}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, acceptTrade, declineTrade, cancelTrade } from '@/lib/db';
+import { getUserByDiscordId, acceptTrade, declineTrade, cancelTrade, incrementChallengeProgress } from '@/lib/db';
 
 export async function PUT(
   req: NextRequest,
@@ -30,6 +30,7 @@ export async function PUT(
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
+    incrementChallengeProgress(user.id, 'weekly_complete_trade');
     return NextResponse.json({ success: true });
   } else if (action === 'decline') {
     const ok = declineTrade(tradeId, user.id);

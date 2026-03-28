@@ -844,6 +844,13 @@ export function addToPackInventory(userId: number, packType: string): void {
 }
 
 /** Removes one inventory entry and returns its pack_type, or null if not found/not owned. */
+export function getInventoryPackType(userId: number, inventoryId: number): string | null {
+  const db = getDb();
+  const row = db.prepare('SELECT pack_type FROM pack_inventory WHERE id = ? AND user_id = ?')
+    .get(inventoryId, userId) as { pack_type: string } | undefined;
+  return row?.pack_type ?? null;
+}
+
 export function consumeInventoryPack(userId: number, inventoryId: number): string | null {
   const db = getDb();
   let packType: string | null = null;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, getUserById, getPacksOpenedToday, incrementPacksOpened, createPack, addCardToUser, addCardToPack, isAdmin, updateCoins, recordCoinTransaction, consumeInventoryPack, incrementChallengeProgress } from '@/lib/db';
+import { getUserByDiscordId, getUserById, getPacksOpenedToday, incrementPacksOpened, createPack, addCardToUser, addCardToPack, isAdmin, updateCoins, recordCoinTransaction, consumeInventoryPack, getInventoryPackType, incrementChallengeProgress } from '@/lib/db';
 import { generatePackCards, PACK_CONFIGS, type PackType } from '@/lib/cards';
 
 const DAILY_FREE_PACKS = parseInt(process.env.DAILY_FREE_PACKS || '3', 10);
@@ -18,27 +18,35 @@ export async function POST(request: NextRequest) {
 
   // --- Inventory pack ---
   if (body.inventory_id != null) {
-    const packType = consumeInventoryPack(user.id, body.inventory_id);
+    // Peek at pack type first — don't consume until cards are successfully generated
+    const packType = getInventoryPackType(user.id, body.inventory_id);
     if (!packType) return NextResponse.json({ error: 'Pack not found in your inventory' }, { status: 404 });
 
+    let cards;
     try {
-      const cards = await generatePackCards(CARDS_PER_PACK, packType as PackType);
-      const packId = createPack(user.id, packType);
-      const userCards = cards.map(card => {
-        const userCardId = addCardToUser(user.id, card.id, 'pack');
-        addCardToPack(packId, card.id, userCardId);
-        return { ...card, user_card_id: userCardId };
-      });
-      incrementChallengeProgress(user.id, 'daily_open_pack');
-      incrementChallengeProgress(user.id, 'daily_open_3_packs');
-      incrementChallengeProgress(user.id, 'weekly_open_10_packs');
-      if (packType === 'elite') incrementChallengeProgress(user.id, 'weekly_open_elite_pack');
-      const updatedUser = getUserById(user.id)!;
-      return NextResponse.json({ pack_id: packId, cards: userCards, new_balance: updatedUser.coins });
+      cards = await generatePackCards(CARDS_PER_PACK, packType as PackType);
     } catch (error) {
       console.error('Pack opening error:', error);
+      // Pack not consumed yet — user can try again
       return NextResponse.json({ error: 'Failed to generate pack. The CSA API may be temporarily unavailable.' }, { status: 500 });
     }
+
+    // Cards generated — now atomically consume the pack
+    const consumed = consumeInventoryPack(user.id, body.inventory_id);
+    if (!consumed) return NextResponse.json({ error: 'Pack no longer available' }, { status: 409 });
+
+    const packId = createPack(user.id, packType);
+    const userCards = cards.map(card => {
+      const userCardId = addCardToUser(user.id, card.id, 'pack');
+      addCardToPack(packId, card.id, userCardId);
+      return { ...card, user_card_id: userCardId };
+    });
+    incrementChallengeProgress(user.id, 'daily_open_pack');
+    incrementChallengeProgress(user.id, 'daily_open_3_packs');
+    incrementChallengeProgress(user.id, 'weekly_open_10_packs');
+    if (packType === 'elite') incrementChallengeProgress(user.id, 'weekly_open_elite_pack');
+    const updatedUser = getUserById(user.id)!;
+    return NextResponse.json({ pack_id: packId, cards: userCards, new_balance: updatedUser.coins });
   }
 
   // --- Paid or free pack ---

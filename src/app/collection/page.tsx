@@ -97,6 +97,7 @@ export default function CollectionPage() {
   const [revealCards, setRevealCards] = useState<CardData[] | null>(null);
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
   const [openingId, setOpeningId] = useState<number | null>(null);
+  const [packOpenError, setPackOpenError] = useState<string | null>(null);
   // Bulk salvage
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkSelected, setBulkSelected] = useState<Set<number>>(new Set());
@@ -197,6 +198,7 @@ export default function CollectionPage() {
 
   const handleOpenInventoryPack = async (inventoryId: number) => {
     setOpeningId(inventoryId);
+    setPackOpenError(null);
     try {
       const res = await fetch('/api/packs/open', {
         method: 'POST',
@@ -204,11 +206,17 @@ export default function CollectionPage() {
         body: JSON.stringify({ inventory_id: inventoryId }),
       });
       const data = await res.json();
-      if (!res.ok) { setOpeningId(null); return; }
+      if (!res.ok) {
+        setPackOpenError(data.error || 'Failed to open pack. Please try again.');
+        setOpeningId(null);
+        return;
+      }
       setRevealCards(data.cards);
       setFlippedCards(new Set());
       setInventory(inv => inv.filter(p => p.id !== inventoryId));
-    } catch { /* ignore */ }
+    } catch {
+      setPackOpenError('Network error. Please try again.');
+    }
     setOpeningId(null);
   };
 
@@ -640,6 +648,13 @@ export default function CollectionPage() {
             </>
           ) : (
             <>
+              {/* ---- Pack open error ---- */}
+              {packOpenError && (
+                <div style={{ padding: '0.75rem 1rem', marginBottom: '1rem', borderRadius: 'var(--radius-md)', background: 'rgba(255,82,82,0.1)', color: 'var(--accent-red)', border: '1px solid rgba(255,82,82,0.3)', fontSize: '0.9rem' }}>
+                  {packOpenError}
+                </div>
+              )}
+
               {/* ---- Inventory ---- */}
               {inventory.length > 0 && (
                 <div style={{ marginBottom: '2rem' }}>

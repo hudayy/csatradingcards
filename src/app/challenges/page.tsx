@@ -55,6 +55,7 @@ export default function ChallengesPage() {
         if (data.pack) msg += ` + 1 ${data.pack} pack added to your inventory!`;
         setMessage({ type: 'success', text: msg });
         setChallenges(prev => prev.map(c => c.id === challenge.id ? { ...c, claimed: true } : c));
+        if (data.newBalance !== undefined) window.dispatchEvent(new CustomEvent('coinsUpdated', { detail: { balance: data.newBalance } }));
       } else {
         setMessage({ type: 'error', text: data.error || 'Failed to claim' });
       }

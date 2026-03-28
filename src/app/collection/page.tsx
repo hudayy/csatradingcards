@@ -118,7 +118,7 @@ export default function CollectionPage() {
   const [cardValuation, setCardValuation] = useState<{ value: number; basis: string; copy_count: number; recent_sales_count: number; recent_avg: number | null } | null>(null);
   const [valuationLoading, setValuationLoading] = useState(false);
   // Full sets
-  const [sets, setSets] = useState<{ player_csa_id: number; player_name: string; season_id: number; season_number: number; franchise_name: string | null; franchise_color: string | null; player_avatar_url: string | null; owned_rarities: string[]; is_complete: boolean; already_claimed: boolean }[]>([]);
+  const [sets, setSets] = useState<{ franchise_id: number; franchise_name: string; franchise_color: string | null; franchise_logo_url: string | null; franchise_abbr: string | null; season_id: number; season_number: number; set_type: 'rarity' | 'super'; rarity: string | null; owned_count: number; total_count: number; is_complete: boolean; already_claimed: boolean }[]>([]);
   const [setsLoading, setSetsLoading] = useState(false);
   const [setsMsg, setSetsMsg] = useState<string | null>(null);
 
@@ -726,79 +726,114 @@ export default function CollectionPage() {
       )}
 
       {/* ---- Sets tab ---- */}
-      {activeTab === 'sets' && (
-        setsLoading ? (
-          <div className="loading-spinner"><div className="spinner" /></div>
-        ) : sets.length === 0 ? (
+      {activeTab === 'sets' && (() => {
+        if (setsLoading) return <div className="loading-spinner"><div className="spinner" /></div>;
+        if (sets.length === 0) return (
           <div className="empty-state">
             <div className="empty-state-icon"><Trophy size={64} /></div>
             <div className="empty-state-title">No Sets Yet</div>
-            <div className="empty-state-text">Collect at least 2 different rarities of the same player to start tracking your sets. Complete all 7 rarities (Bronze → Prismatic) to earn a reward!</div>
+            <div className="empty-state-text">Collect cards from a franchise to start tracking sets. Complete all players at a rarity to earn an exclusive Set Reward Card!</div>
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {setsMsg && <div style={{ padding: '0.75rem', background: 'rgba(72,199,116,0.1)', border: '1px solid var(--accent-green)', borderRadius: 'var(--radius-md)', color: 'var(--accent-green)', marginBottom: '0.5rem' }}>{setsMsg}</div>}
-            {sets
-              .sort((a, b) => (b.is_complete ? 1 : 0) - (a.is_complete ? 1 : 0) || b.owned_rarities.length - a.owned_rarities.length)
-              .map(s => {
-                const ALL_RARITIES_ORDER = ['bronze','silver','gold','platinum','diamond','holographic','prismatic'];
-                return (
-                  <div key={`${s.player_csa_id}-${s.season_id}`} style={{
-                    background: 'var(--bg-card)', border: `1px solid ${s.is_complete ? 'rgba(72,199,116,0.4)' : 'var(--border-subtle)'}`,
-                    borderRadius: 'var(--radius-lg)', padding: '0.85rem 1rem',
-                    display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap',
-                  }}>
-                    {s.player_avatar_url
-                      ? <img src={s.player_avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', border: `2px solid ${s.franchise_color || 'var(--border-light)'}` }} />
-                      : <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{s.player_name.charAt(0)}</div>
-                    }
-                    <div style={{ flex: 1, minWidth: 120 }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{s.player_name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Season {s.season_number}{s.franchise_name ? ` · ${s.franchise_name}` : ''}</div>
-                      <div style={{ display: 'flex', gap: '0.2rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
-                        {ALL_RARITIES_ORDER.map(r => (
-                          <div key={r} style={{
-                            width: 10, height: 10, borderRadius: '50%',
-                            background: s.owned_rarities.includes(r) ? RARITY_COLORS_HEX[r] || '#888' : 'var(--border-subtle)',
-                            boxShadow: s.owned_rarities.includes(r) ? `0 0 4px ${RARITY_COLORS_HEX[r] || '#888'}88` : 'none',
-                            title: r,
-                          }} title={r} />
-                        ))}
-                      </div>
+        );
+
+        // Group sets by franchise+season
+        const groups: Record<string, typeof sets> = {};
+        for (const s of sets) {
+          const key = `${s.franchise_id}-${s.season_id}`;
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(s);
+        }
+        const ALL_RARITIES_ORDER = ['bronze','silver','gold','platinum','diamond','holographic','prismatic'];
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {setsMsg && <div style={{ padding: '0.75rem', background: 'rgba(72,199,116,0.1)', border: '1px solid var(--accent-green)', borderRadius: 'var(--radius-md)', color: 'var(--accent-green)' }}>{setsMsg}</div>}
+            {Object.values(groups).map(group => {
+              const { franchise_id, franchise_name, franchise_color, franchise_logo_url, franchise_abbr, season_id, season_number } = group[0];
+              const rarityRows = group.filter(s => s.set_type === 'rarity').sort((a, b) => ALL_RARITIES_ORDER.indexOf(a.rarity!) - ALL_RARITIES_ORDER.indexOf(b.rarity!));
+              const superRow = group.find(s => s.set_type === 'super');
+              return (
+                <div key={`${franchise_id}-${season_id}`} style={{ background: 'var(--bg-card)', border: `1px solid ${franchise_color || 'var(--border-subtle)'}33`, borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+                  {/* Franchise header */}
+                  <div style={{ background: `${franchise_color || 'var(--bg-secondary)'}22`, padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.6rem', borderBottom: '1px solid var(--border-subtle)' }}>
+                    {franchise_logo_url && <img src={franchise_logo_url} alt="" style={{ width: 28, height: 28, objectFit: 'contain' }} />}
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: franchise_color || 'var(--text-primary)' }}>{franchise_name}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Season {season_number} · {franchise_abbr}</div>
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', flexShrink: 0 }}>
-                      {s.owned_rarities.length}/7
-                    </div>
-                    {s.is_complete && !s.already_claimed && (
-                      <button
-                        className="btn btn-primary"
-                        style={{ fontSize: '0.8rem', padding: '0.4rem 0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-                        onClick={async () => {
-                          setSetsMsg(null);
-                          try {
-                            const res = await fetch('/api/collection/sets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ player_csa_id: s.player_csa_id, season_id: s.season_id }) });
-                            const data = await res.json();
-                            if (data.success) {
-                              setSetsMsg(`Claimed ${data.coins.toLocaleString()} coins for completing ${s.player_name}'s full set!`);
-                              setSets(prev => prev.map(x => x.player_csa_id === s.player_csa_id && x.season_id === s.season_id ? { ...x, already_claimed: true } : x));
-                            } else {
-                              setSetsMsg(data.error || 'Failed to claim');
-                            }
-                          } catch { setSetsMsg('Network error'); }
-                        }}
-                      >
-                        <Trophy size={14} /> Claim 5,000 Coins
-                      </button>
-                    )}
-                    {s.already_claimed && <span style={{ fontSize: '0.78rem', color: 'var(--accent-green)', fontWeight: 600 }}>✓ Claimed</span>}
-                    {s.is_complete && !s.already_claimed && <span style={{ fontSize: '0.75rem', color: 'var(--accent-green)', fontWeight: 700 }}>COMPLETE!</span>}
                   </div>
-                );
-              })
-            }
+                  {/* Rarity set rows */}
+                  <div style={{ padding: '0.5rem 0' }}>
+                    {rarityRows.map(s => {
+                      const pct = s.total_count > 0 ? Math.round((s.owned_count / s.total_count) * 100) : 0;
+                      return (
+                        <div key={s.rarity} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.45rem 1rem', borderBottom: '1px solid var(--border-subtle)22' }}>
+                          <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: RARITY_COLORS_HEX[s.rarity!] || '#888', boxShadow: `0 0 5px ${RARITY_COLORS_HEX[s.rarity!] || '#888'}88` }} title={s.rarity!} />
+                          <div style={{ width: 80, fontSize: '0.78rem', fontWeight: 600, textTransform: 'capitalize', color: RARITY_COLORS_HEX[s.rarity!] || 'var(--text-primary)', flexShrink: 0 }}>{s.rarity}</div>
+                          <div style={{ flex: 1, height: 6, background: 'var(--border-subtle)', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: RARITY_COLORS_HEX[s.rarity!] || '#888', borderRadius: 3, transition: 'width 0.3s' }} />
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0, width: 40, textAlign: 'right' }}>{s.owned_count}/{s.total_count}</div>
+                          {s.is_complete && !s.already_claimed && (
+                            <button className="btn btn-primary" style={{ fontSize: '0.72rem', padding: '0.25rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}
+                              onClick={async () => {
+                                setSetsMsg(null);
+                                try {
+                                  const res = await fetch('/api/collection/sets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set_type: 'rarity', franchise_id: s.franchise_id, rarity: s.rarity, season_id: s.season_id }) });
+                                  const data = await res.json();
+                                  if (data.success) {
+                                    setSetsMsg(`Claimed your ${s.rarity} Set Reward Card: "${data.card_name}"!`);
+                                    setSets(prev => prev.map(x => x.franchise_id === s.franchise_id && x.season_id === s.season_id && x.rarity === s.rarity ? { ...x, already_claimed: true } : x));
+                                  } else { setSetsMsg(data.error || 'Failed to claim'); }
+                                } catch { setSetsMsg('Network error'); }
+                              }}>
+                              <Trophy size={11} /> Claim Card
+                            </button>
+                          )}
+                          {s.already_claimed && <span style={{ fontSize: '0.72rem', color: 'var(--accent-green)', fontWeight: 600, flexShrink: 0 }}>✓ Claimed</span>}
+                          {s.is_complete && !s.already_claimed && <span style={{ fontSize: '0.7rem', color: 'var(--accent-green)', fontWeight: 700, flexShrink: 0 }}>COMPLETE!</span>}
+                        </div>
+                      );
+                    })}
+                    {/* Super set row */}
+                    {superRow && (() => {
+                      const pct = superRow.total_count > 0 ? Math.round((superRow.owned_count / superRow.total_count) * 100) : 0;
+                      return (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.55rem 1rem', background: 'rgba(255,215,0,0.04)' }}>
+                          <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: RARITY_COLORS_HEX['prismatic'] || '#f0f', boxShadow: `0 0 6px ${RARITY_COLORS_HEX['prismatic'] || '#f0f'}aa` }} />
+                          <div style={{ width: 80, fontSize: '0.78rem', fontWeight: 700, color: RARITY_COLORS_HEX['prismatic'] || 'var(--text-primary)', flexShrink: 0 }}>Super Set</div>
+                          <div style={{ flex: 1, height: 6, background: 'var(--border-subtle)', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${RARITY_COLORS_HEX['diamond'] || '#88f'}, ${RARITY_COLORS_HEX['prismatic'] || '#f0f'})`, borderRadius: 3, transition: 'width 0.3s' }} />
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0, width: 50, textAlign: 'right' }}>{superRow.owned_count}/{superRow.total_count}</div>
+                          {superRow.is_complete && !superRow.already_claimed && (
+                            <button className="btn btn-primary" style={{ fontSize: '0.72rem', padding: '0.25rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.3rem', flexShrink: 0 }}
+                              onClick={async () => {
+                                setSetsMsg(null);
+                                try {
+                                  const res = await fetch('/api/collection/sets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ set_type: 'super', franchise_id: superRow.franchise_id, season_id: superRow.season_id }) });
+                                  const data = await res.json();
+                                  if (data.success) {
+                                    setSetsMsg(`Claimed your Super Set Reward Card: "${data.card_name}"!`);
+                                    setSets(prev => prev.map(x => x.franchise_id === superRow.franchise_id && x.season_id === superRow.season_id && x.set_type === 'super' ? { ...x, already_claimed: true } : x));
+                                  } else { setSetsMsg(data.error || 'Failed to claim'); }
+                                } catch { setSetsMsg('Network error'); }
+                              }}>
+                              <Trophy size={11} /> Claim Card
+                            </button>
+                          )}
+                          {superRow.already_claimed && <span style={{ fontSize: '0.72rem', color: 'var(--accent-green)', fontWeight: 600, flexShrink: 0 }}>✓ Claimed</span>}
+                          {superRow.is_complete && !superRow.already_claimed && <span style={{ fontSize: '0.7rem', color: 'var(--accent-green)', fontWeight: 700, flexShrink: 0 }}>COMPLETE!</span>}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        )
-      )}
+        );
+      })()}
 
       {/* ---- Bulk salvage bar ---- */}
       {bulkMode && (

@@ -30,7 +30,7 @@ interface CardData {
 export default function HomePage() {
   const [user, setUser] = useState<{ coins: number } | null>(null);
   const [featuredCards, setFeaturedCards] = useState<CardData[]>([]);
-  const [streak, setStreak] = useState<{ streak: number; claimed_today: boolean; next_milestone: number | null; next_milestone_reward: { coins: number; pack?: string } | null } | null>(null);
+  const [streak, setStreak] = useState<{ streak: number; claimed_today: boolean; next_milestone: number | null; next_milestone_reward: { coins: number; pack?: string; guaranteed_rarity?: string } | null } | null>(null);
   const [claimingBonus, setClaimingBonus] = useState(false);
   const [bonusMsg, setBonusMsg] = useState<string | null>(null);
 
@@ -63,6 +63,7 @@ export default function HomePage() {
         if (data.streakBonus) {
           if (data.streakBonus.coins > 0) msg += ` +${data.streakBonus.coins} streak bonus!`;
           if (data.streakBonus.pack) msg += ` + 1 ${data.streakBonus.pack} pack!`;
+          if (data.streakBonus.guaranteed_rarity) msg += ` + 1 guaranteed ${data.streakBonus.guaranteed_rarity} card!`;
         }
         setBonusMsg(msg);
         setStreak(s => s ? { ...s, claimed_today: true, streak: data.streak } : s);

@@ -187,6 +187,7 @@ function initializeSchema(db: Database.Database) {
     'ALTER TABLE marketplace_listings ADD COLUMN expires_at DATETIME',
     'ALTER TABLE users ADD COLUMN login_streak INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE users ADD COLUMN last_login_date TEXT',
+    'ALTER TABLE user_cards ADD COLUMN is_reward_card INTEGER NOT NULL DEFAULT 0',
   ]) {
     try { db.exec(col); } catch { /* already exists */ }
   }
@@ -251,6 +252,19 @@ function initializeSchema(db: Database.Database) {
       price INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (slot_id) REFERENCES shop_slots(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS franchise_set_rewards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      set_type TEXT NOT NULL,
+      franchise_id INTEGER NOT NULL,
+      rarity TEXT,
+      season_id INTEGER NOT NULL,
+      reward_card_id TEXT,
+      claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, set_type, franchise_id, rarity, season_id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
     );
   `);
 
@@ -437,6 +451,7 @@ export interface UserCard {
   acquired_at: string;
   source: string;
   is_listed: number;
+  is_reward_card: number;
 }
 
 export type UserCardWithDetails = UserCard & Card;
@@ -607,9 +622,10 @@ export function createListing(sellerId: number, userCardId: number, cardId: stri
   const db = getDb();
   let listingId!: number;
   db.transaction(() => {
-    const card = db.prepare('SELECT is_listed FROM user_cards WHERE id = ? AND user_id = ?').get(userCardId, sellerId) as { is_listed: number } | undefined;
+    const card = db.prepare('SELECT is_listed, is_reward_card FROM user_cards WHERE id = ? AND user_id = ?').get(userCardId, sellerId) as { is_listed: number; is_reward_card: number } | undefined;
     if (!card) throw new Error('Card not found');
     if (card.is_listed) throw new Error('Card is already listed');
+    if (card.is_reward_card) throw new Error('Set reward cards cannot be listed on the marketplace');
     db.prepare('UPDATE user_cards SET is_listed = 1 WHERE id = ?').run(userCardId);
     const result = db.prepare(`INSERT INTO marketplace_listings (seller_id, user_card_id, card_id, price, expires_at) VALUES (?, ?, ?, ?, datetime('now', '+30 days'))`).run(sellerId, userCardId, cardId, price);
     listingId = result.lastInsertRowid as number;
@@ -754,18 +770,18 @@ export function recordCoinTransaction(userId: number, amount: number, balanceAft
 
 export const DAILY_BONUS_AMOUNT = 500;
 
-// Streak milestones: day -> { coins, pack }
-const STREAK_MILESTONES: Record<number, { coins: number; pack?: string }> = {
+// Streak milestones: day -> { coins, pack, guaranteed_rarity }
+const STREAK_MILESTONES: Record<number, { coins: number; pack?: string; guaranteed_rarity?: string }> = {
   3:   { coins: 200 },
-  7:   { coins: 500, pack: 'standard' },
-  14:  { coins: 0,   pack: 'elite' },
+  7:   { coins: 0, guaranteed_rarity: 'diamond' },
+  14:  { coins: 0, pack: 'elite' },
   30:  { coins: 1000, pack: 'apex' },
   100: { coins: 2000, pack: 'apex' },
 };
 
 export function claimDailyBonus(userId: number): {
   claimed: boolean; amount: number; newBalance: number;
-  streak: number; streakBonus: { coins: number; pack?: string } | null;
+  streak: number; streakBonus: { coins: number; pack?: string; guaranteed_rarity?: string } | null;
 } {
   const database = getDb();
   const today = new Date().toISOString().split('T')[0];
@@ -794,6 +810,14 @@ export function claimDailyBonus(userId: number): {
     }
     if (streakBonus.pack) {
       addToPackInventory(userId, streakBonus.pack);
+    }
+    if (streakBonus.guaranteed_rarity) {
+      const rewardCard = database.prepare(
+        `SELECT id FROM cards WHERE rarity = ? AND card_type = 'player' AND is_active = 1 ORDER BY RANDOM() LIMIT 1`
+      ).get(streakBonus.guaranteed_rarity) as { id: string } | undefined;
+      if (rewardCard) {
+        database.prepare("INSERT INTO user_cards (user_id, card_id, source) VALUES (?, ?, 'reward')").run(userId, rewardCard.id);
+      }
     }
   }
 
@@ -867,14 +891,15 @@ export const SALVAGE_VALUES: Record<string, number> = {
 export function salvageCard(userId: number, userCardId: number): { coins: number; newBalance: number } {
   const database = getDb();
   const row = database.prepare(`
-    SELECT uc.id, uc.user_id, uc.is_listed, c.rarity
+    SELECT uc.id, uc.user_id, uc.is_listed, uc.is_reward_card, c.rarity
     FROM user_cards uc JOIN cards c ON uc.card_id = c.id
     WHERE uc.id = ?
-  `).get(userCardId) as { id: number; user_id: number; is_listed: number; rarity: string } | undefined;
+  `).get(userCardId) as { id: number; user_id: number; is_listed: number; is_reward_card: number; rarity: string } | undefined;
 
   if (!row) throw new Error('Card not found');
   if (row.user_id !== userId) throw new Error('Not your card');
   if (row.is_listed) throw new Error('Cannot salvage a listed card');
+  if (row.is_reward_card) throw new Error('Set reward cards cannot be salvaged');
 
   const coins = SALVAGE_VALUES[row.rarity] ?? 10;
 
@@ -899,12 +924,12 @@ export function bulkSalvageCards(userId: number, userCardIds: number[]): { total
   database.transaction(() => {
     for (const userCardId of userCardIds) {
       const row = database.prepare(`
-        SELECT uc.id, uc.user_id, uc.is_listed, c.rarity
+        SELECT uc.id, uc.user_id, uc.is_listed, uc.is_reward_card, c.rarity
         FROM user_cards uc JOIN cards c ON uc.card_id = c.id
         WHERE uc.id = ?
-      `).get(userCardId) as { id: number; user_id: number; is_listed: number; rarity: string } | undefined;
+      `).get(userCardId) as { id: number; user_id: number; is_listed: number; is_reward_card: number; rarity: string } | undefined;
 
-      if (!row || row.user_id !== userId || row.is_listed) continue;
+      if (!row || row.user_id !== userId || row.is_listed || row.is_reward_card) continue;
 
       const coins = SALVAGE_VALUES[row.rarity] ?? 10;
       totalCoins += coins;
@@ -1253,11 +1278,13 @@ export function createTrade(senderId: number, receiverId: number, senderCardIds:
     const card = database.prepare('SELECT uc.*, c.player_name, c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.id = ?').get(id) as (UserCard & { player_name: string; rarity: string }) | undefined;
     if (!card || card.user_id !== senderId) throw new Error(`Card not found in your collection (ID ${id})`);
     if (card.is_listed) throw new Error(`"${card.player_name}" (${card.rarity}) is listed on the marketplace and cannot be traded`);
+    if (card.is_reward_card) throw new Error(`"${card.player_name}" (${card.rarity}) is a Set Reward card and cannot be traded`);
   }
   for (const id of receiverCardIds) {
     const card = database.prepare('SELECT uc.*, c.player_name, c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.id = ?').get(id) as (UserCard & { player_name: string; rarity: string }) | undefined;
     if (!card || card.user_id !== receiverId) throw new Error(`Requested card not found in their collection (ID ${id})`);
     if (card.is_listed) throw new Error(`"${card.player_name}" (${card.rarity}) is listed on the marketplace and cannot be traded`);
+    if (card.is_reward_card) throw new Error(`"${card.player_name}" (${card.rarity}) is a Set Reward card and cannot be traded`);
   }
 
   let tradeId: number;
@@ -1769,74 +1796,178 @@ export function searchCardsForAdmin(query: string, limit = 20): Pick<Card,
   `).all(`%${query}%`, limit) as any[];
 }
 
-// ---- Full Set Rewards ----
+// ---- Full Set Rewards (Franchise-based) ----
 
 const ALL_RARITIES = ['bronze','silver','gold','platinum','diamond','holographic','prismatic'];
-export const FULL_SET_REWARD_COINS = 5000;
 
-export interface FullSetStatus {
-  player_csa_id: number;
-  player_name: string;
+export interface FranchiseSetStatus {
+  franchise_id: number;
+  franchise_name: string;
+  franchise_color: string | null;
+  franchise_logo_url: string | null;
+  franchise_abbr: string | null;
+  franchise_conf: string | null;
   season_id: number;
   season_number: number;
-  franchise_name: string | null;
-  franchise_color: string | null;
-  player_avatar_url: string | null;
-  owned_rarities: string[];
+  set_type: 'rarity' | 'super';
+  rarity: string | null;
+  owned_count: number;
+  total_count: number;
   is_complete: boolean;
   already_claimed: boolean;
 }
 
-export function getFullSetStatuses(userId: number): FullSetStatus[] {
-  const db = getDb();
-
-  // Get all distinct player+season combos the user has at least 1 card for
-  const players = db.prepare(`
-    SELECT DISTINCT c.player_csa_id, c.player_name, c.season_id, c.season_number,
-      c.franchise_name, c.franchise_color, c.player_avatar_url
-    FROM user_cards uc JOIN cards c ON uc.card_id = c.id
-    WHERE uc.user_id = ? AND c.card_type = 'player'
-  `).all(userId) as { player_csa_id: number; player_name: string; season_id: number; season_number: number; franchise_name: string | null; franchise_color: string | null; player_avatar_url: string | null }[];
-
-  return players.map(p => {
-    const ownedRarities = (db.prepare(`
-      SELECT DISTINCT c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id
-      WHERE uc.user_id = ? AND c.player_csa_id = ? AND c.season_id = ?
-    `).all(userId, p.player_csa_id, p.season_id) as { rarity: string }[]).map(r => r.rarity);
-
-    const isComplete = ALL_RARITIES.every(r => ownedRarities.includes(r));
-    const claimed = db.prepare('SELECT id FROM full_set_rewards WHERE user_id = ? AND player_csa_id = ? AND season_id = ?').get(userId, p.player_csa_id, p.season_id);
-
-    return {
-      ...p,
-      owned_rarities: ownedRarities,
-      is_complete: isComplete,
-      already_claimed: !!claimed,
-    };
-  }).filter(p => p.owned_rarities.length >= 2); // only show if at least 2 rarities owned
+function getOrCreateSetRewardCard(
+  db: Database.Database,
+  setType: 'rarity' | 'super',
+  franchiseId: number,
+  franchiseName: string,
+  franchiseColor: string | null,
+  franchiseLogoUrl: string | null,
+  franchiseAbbr: string | null,
+  franchiseConf: string | null,
+  rarity: string,
+  seasonId: number,
+  seasonNumber: number,
+): string {
+  const cardId = `set_reward:${setType}:${franchiseId}:${rarity}:${seasonId}`;
+  db.prepare(`
+    INSERT OR IGNORE INTO cards (
+      id, player_csa_id, player_name, player_discord_id, player_avatar_url,
+      season_id, season_number, franchise_id, franchise_name, franchise_abbr,
+      franchise_color, franchise_logo_url, franchise_conf, tier_name, tier_abbr,
+      rarity, card_type, stat_gpg, stat_apg, stat_svpg, stat_win_pct, salary, overall_rating
+    ) VALUES (?, 0, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, 'Set Reward', 'SR', ?, 'set_reward', 0, 0, 0, 0, 0, 0)
+  `).run(
+    cardId,
+    setType === 'super'
+      ? `${franchiseName} Super Set Reward`
+      : `${franchiseName} ${rarity.charAt(0).toUpperCase() + rarity.slice(1)} Set Reward`,
+    seasonId, seasonNumber,
+    franchiseId, franchiseName, franchiseAbbr, franchiseColor, franchiseLogoUrl, franchiseConf,
+    rarity,
+  );
+  return cardId;
 }
 
-export function claimFullSetReward(userId: number, playerCsaId: number, seasonId: number): { coins: number; newBalance: number } {
+export function getSetStatuses(userId: number): FranchiseSetStatus[] {
   const db = getDb();
 
-  const owned = (db.prepare(`
-    SELECT DISTINCT c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id
-    WHERE uc.user_id = ? AND c.player_csa_id = ? AND c.season_id = ?
-  `).all(userId, playerCsaId, seasonId) as { rarity: string }[]).map(r => r.rarity);
+  // Get all distinct franchise+season combos the user has player cards for
+  const franchises = db.prepare(`
+    SELECT DISTINCT c.franchise_id, c.franchise_name, c.franchise_color, c.franchise_logo_url,
+      c.franchise_abbr, c.franchise_conf, c.season_id, c.season_number
+    FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+    WHERE uc.user_id = ? AND c.card_type = 'player' AND c.franchise_id IS NOT NULL
+  `).all(userId) as { franchise_id: number; franchise_name: string; franchise_color: string | null; franchise_logo_url: string | null; franchise_abbr: string | null; franchise_conf: string | null; season_id: number; season_number: number }[];
 
-  if (!ALL_RARITIES.every(r => owned.includes(r))) throw new Error('You do not own all 7 rarities for this player');
+  const results: FranchiseSetStatus[] = [];
 
-  const alreadyClaimed = db.prepare('SELECT id FROM full_set_rewards WHERE user_id = ? AND player_csa_id = ? AND season_id = ?').get(userId, playerCsaId, seasonId);
+  for (const f of franchises) {
+    // --- Rarity sets (one per rarity) ---
+    for (const rarity of ALL_RARITIES) {
+      const totalRow = db.prepare(`
+        SELECT COUNT(DISTINCT player_csa_id) as cnt
+        FROM cards WHERE franchise_id = ? AND season_id = ? AND rarity = ? AND card_type = 'player' AND is_active = 1
+      `).get(f.franchise_id, f.season_id, rarity) as { cnt: number };
+      const total = totalRow.cnt;
+      if (total === 0) continue;
+
+      const ownedRow = db.prepare(`
+        SELECT COUNT(DISTINCT c.player_csa_id) as cnt
+        FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+        WHERE uc.user_id = ? AND c.franchise_id = ? AND c.season_id = ? AND c.rarity = ? AND c.card_type = 'player'
+      `).get(userId, f.franchise_id, f.season_id, rarity) as { cnt: number };
+      const owned = ownedRow.cnt;
+
+      const claimed = db.prepare(
+        `SELECT id FROM franchise_set_rewards WHERE user_id = ? AND set_type = 'rarity' AND franchise_id = ? AND rarity = ? AND season_id = ?`
+      ).get(userId, f.franchise_id, rarity, f.season_id);
+
+      results.push({
+        ...f,
+        set_type: 'rarity',
+        rarity,
+        owned_count: owned,
+        total_count: total,
+        is_complete: owned >= total,
+        already_claimed: !!claimed,
+      });
+    }
+
+    // --- Super set (all players × all rarities) ---
+    const totalSuperRow = db.prepare(`
+      SELECT COUNT(*) as cnt FROM (
+        SELECT DISTINCT player_csa_id, rarity FROM cards
+        WHERE franchise_id = ? AND season_id = ? AND card_type = 'player' AND is_active = 1
+      )
+    `).get(f.franchise_id, f.season_id) as { cnt: number };
+    const totalSuper = totalSuperRow.cnt;
+    if (totalSuper === 0) continue;
+
+    const ownedSuperRow = db.prepare(`
+      SELECT COUNT(*) as cnt FROM (
+        SELECT DISTINCT c.player_csa_id, c.rarity
+        FROM user_cards uc JOIN cards c ON uc.card_id = c.id
+        WHERE uc.user_id = ? AND c.franchise_id = ? AND c.season_id = ? AND c.card_type = 'player'
+      )
+    `).get(userId, f.franchise_id, f.season_id) as { cnt: number };
+    const ownedSuper = ownedSuperRow.cnt;
+
+    const claimedSuper = db.prepare(
+      `SELECT id FROM franchise_set_rewards WHERE user_id = ? AND set_type = 'super' AND franchise_id = ? AND season_id = ?`
+    ).get(userId, f.franchise_id, f.season_id);
+
+    results.push({
+      ...f,
+      set_type: 'super',
+      rarity: null,
+      owned_count: ownedSuper,
+      total_count: totalSuper,
+      is_complete: ownedSuper >= totalSuper,
+      already_claimed: !!claimedSuper,
+    });
+  }
+
+  return results;
+}
+
+export function claimSetReward(userId: number, setType: 'rarity' | 'super', franchiseId: number, rarity: string | null, seasonId: number): { card_id: string; card_name: string } {
+  const db = getDb();
+
+  const alreadyClaimed = setType === 'rarity'
+    ? db.prepare(`SELECT id FROM franchise_set_rewards WHERE user_id = ? AND set_type = 'rarity' AND franchise_id = ? AND rarity = ? AND season_id = ?`).get(userId, franchiseId, rarity, seasonId)
+    : db.prepare(`SELECT id FROM franchise_set_rewards WHERE user_id = ? AND set_type = 'super' AND franchise_id = ? AND season_id = ?`).get(userId, franchiseId, seasonId);
   if (alreadyClaimed) throw new Error('Reward already claimed for this set');
 
+  // Verify set is complete
+  if (setType === 'rarity') {
+    if (!rarity) throw new Error('Rarity required for rarity set claim');
+    const total = (db.prepare(`SELECT COUNT(DISTINCT player_csa_id) as cnt FROM cards WHERE franchise_id = ? AND season_id = ? AND rarity = ? AND card_type = 'player' AND is_active = 1`).get(franchiseId, seasonId, rarity) as { cnt: number }).cnt;
+    const owned = (db.prepare(`SELECT COUNT(DISTINCT c.player_csa_id) as cnt FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.user_id = ? AND c.franchise_id = ? AND c.season_id = ? AND c.rarity = ? AND c.card_type = 'player'`).get(userId, franchiseId, seasonId, rarity) as { cnt: number }).cnt;
+    if (owned < total || total === 0) throw new Error('Set is not yet complete');
+  } else {
+    const total = (db.prepare(`SELECT COUNT(*) as cnt FROM (SELECT DISTINCT player_csa_id, rarity FROM cards WHERE franchise_id = ? AND season_id = ? AND card_type = 'player' AND is_active = 1)`).get(franchiseId, seasonId) as { cnt: number }).cnt;
+    const owned = (db.prepare(`SELECT COUNT(*) as cnt FROM (SELECT DISTINCT c.player_csa_id, c.rarity FROM user_cards uc JOIN cards c ON uc.card_id = c.id WHERE uc.user_id = ? AND c.franchise_id = ? AND c.season_id = ? AND c.card_type = 'player')`).get(userId, franchiseId, seasonId) as { cnt: number }).cnt;
+    if (owned < total || total === 0) throw new Error('Super set is not yet complete');
+  }
+
+  // Get franchise info for reward card
+  const franchiseInfo = db.prepare(`SELECT franchise_name, franchise_color, franchise_logo_url, franchise_abbr, franchise_conf, season_number FROM cards WHERE franchise_id = ? AND season_id = ? LIMIT 1`).get(franchiseId, seasonId) as { franchise_name: string; franchise_color: string | null; franchise_logo_url: string | null; franchise_abbr: string | null; franchise_conf: string | null; season_number: number } | undefined;
+  if (!franchiseInfo) throw new Error('Franchise not found');
+
+  const rewardRarity = setType === 'super' ? 'prismatic' : rarity!;
+  const cardId = getOrCreateSetRewardCard(db, setType, franchiseId, franchiseInfo.franchise_name, franchiseInfo.franchise_color, franchiseInfo.franchise_logo_url, franchiseInfo.franchise_abbr, franchiseInfo.franchise_conf, rewardRarity, seasonId, franchiseInfo.season_number);
+  const cardName = setType === 'super'
+    ? `${franchiseInfo.franchise_name} Super Set Reward`
+    : `${franchiseInfo.franchise_name} ${rewardRarity.charAt(0).toUpperCase() + rewardRarity.slice(1)} Set Reward`;
+
   db.transaction(() => {
-    db.prepare('INSERT INTO full_set_rewards (user_id, player_csa_id, season_id, coins_rewarded) VALUES (?, ?, ?, ?)').run(userId, playerCsaId, seasonId, FULL_SET_REWARD_COINS);
-    db.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(FULL_SET_REWARD_COINS, userId);
+    db.prepare("INSERT INTO user_cards (user_id, card_id, source, is_reward_card) VALUES (?, ?, 'reward', 1)").run(userId, cardId);
+    db.prepare(`INSERT INTO franchise_set_rewards (user_id, set_type, franchise_id, rarity, season_id, reward_card_id) VALUES (?, ?, ?, ?, ?, ?)`).run(userId, setType, franchiseId, rarity ?? null, seasonId, cardId);
   })();
 
-  const updated = getUserById(userId)!;
-  recordCoinTransaction(userId, FULL_SET_REWARD_COINS, updated.coins, 'reward', `Full set reward: player ${playerCsaId} season ${seasonId}`);
-  return { coins: FULL_SET_REWARD_COINS, newBalance: updated.coins };
+  return { card_id: cardId, card_name: cardName };
 }
 
 // ---- Challenges ----

@@ -4,10 +4,10 @@ import { getUserByDiscordId } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-const STREAK_MILESTONES: Record<number, { coins: number; pack?: string }> = {
+const STREAK_MILESTONES: Record<number, { coins: number; pack?: string; guaranteed_rarity?: string }> = {
   3:   { coins: 200 },
-  7:   { coins: 500, pack: 'standard' },
-  14:  { coins: 0,   pack: 'elite' },
+  7:   { coins: 0, guaranteed_rarity: 'diamond' },
+  14:  { coins: 0, pack: 'elite' },
   30:  { coins: 1000, pack: 'apex' },
   100: { coins: 2000, pack: 'apex' },
 };

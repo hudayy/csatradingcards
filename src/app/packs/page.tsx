@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import TradingCard from '@/components/TradingCard';
 import { Package, FolderOpen, LogIn, Sparkles, Clock, PartyPopper } from 'lucide-react';
 
@@ -47,6 +48,7 @@ function useResetCountdown(): string {
 
 export default function PacksPage() {
   const [packsRemaining, setPacksRemaining] = useState<number | null>(null);
+  const [inventoryCount, setInventoryCount] = useState<number>(0);
   const [isOpening, setIsOpening] = useState(false);
   const [revealedCards, setRevealedCards] = useState<CardData[]>([]);
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
@@ -65,6 +67,9 @@ export default function PacksPage() {
         setCsaId(authData.user.csa_id ?? null);
         if (packData.packs_remaining !== undefined) {
           setPacksRemaining(packData.packs_remaining);
+        }
+        if (packData.inventory !== undefined) {
+          setInventoryCount(packData.inventory.length);
         }
       }
       setLoading(false);
@@ -184,6 +189,14 @@ export default function PacksPage() {
           >
             {isOpening ? <><Sparkles size={18} /> Opening...</> : packsRemaining === 0 ? <><Clock size={18} /> Resets in {resetCountdown}</> : <><Package size={18} /> Open Free Pack</>}
           </button>
+
+          {inventoryCount > 0 && (
+            <div style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+              <Link href="/collection?tab=packs" className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.5rem', fontWeight: 600 }}>
+                <FolderOpen size={18} /> You have {inventoryCount} pack{inventoryCount !== 1 ? 's' : ''} in inventory →
+              </Link>
+            </div>
+          )}
         </div>
       ) : (
         <>

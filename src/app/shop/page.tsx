@@ -102,6 +102,8 @@ export default function ShopPage() {
     const qty = quantities[packType] || 1;
     const cost = PACK_CONFIGS[packType].cost * qty;
     if (coins === null || coins < cost) return;
+    const confirmed = window.confirm(`Buy ${qty} ${PACK_CONFIGS[packType].name}${qty > 1 ? 's' : ''} for ${cost.toLocaleString()} coins?`);
+    if (!confirmed) return;
     setPurchasing(packType);
     setError(null);
     setBuyMsg(null);

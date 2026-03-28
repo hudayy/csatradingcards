@@ -1328,13 +1328,15 @@ export function createTrade(senderId: number, receiverId: number, senderCardIds:
   return tradeId!;
 }
 
-export function acceptTrade(tradeId: number, userId: number): { success: boolean; error?: string } {
+export function acceptTrade(tradeId: number, userId: number): { success: boolean; error?: string; sender_id?: number } {
   const database = getDb();
+  let senderId: number | undefined;
 
   try {
     database.transaction(() => {
       const trade = database.prepare(`SELECT * FROM trades WHERE id = ? AND receiver_id = ? AND status = 'pending'`).get(tradeId, userId) as Trade | undefined;
       if (!trade) throw new Error('Trade not found or you are not the receiver');
+      senderId = trade.sender_id;
 
       const senderCards = getTradeCards(tradeId, 'sender');
       const receiverCards = getTradeCards(tradeId, 'receiver');
@@ -1393,8 +1395,7 @@ export function acceptTrade(tradeId: number, userId: number): { success: boolean
         }
       }
     })();
-
-    return { success: true };
+    return { success: true, sender_id: senderId };
   } catch (e) {
     return { success: false, error: (e as Error).message };
   }

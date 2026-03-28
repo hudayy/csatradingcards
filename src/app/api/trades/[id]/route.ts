@@ -31,6 +31,9 @@ export async function PUT(
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
     incrementChallengeProgress(user.id, 'weekly_complete_trade');
+    if (result.sender_id) {
+      incrementChallengeProgress(result.sender_id, 'weekly_complete_trade');
+    }
     return NextResponse.json({ success: true });
   } else if (action === 'decline') {
     const ok = declineTrade(tradeId, user.id);

@@ -54,6 +54,32 @@ export default async function ShowcasePage() {
     );
   }
 
+  // Build a set reward card from the best franchise (last in sortedTiers = World Class)
+  const topTierEntries = tierGroups.get(sortedTiers[sortedTiers.length - 1]) ?? pool;
+  const setRewardSource = [...topTierEntries].sort((a, b) => b.player.active_salary - a.player.active_salary)[0] ?? pool[0];
+  const setRewardCard = setRewardSource ? (() => {
+    const { player, franchise } = setRewardSource;
+    const franchiseLogo = franchise?.logo
+      ? (franchise.logo.startsWith('http') ? franchise.logo : `https://api.playcsa.com${franchise.logo}`)
+      : null;
+    return {
+      id: 'showcase-set-reward',
+      player_name: `${player.Franchise?.name ?? 'CSA'} Super Set Reward`,
+      player_avatar_url: null as string | null,
+      franchise_name: player.Franchise?.name ?? null,
+      franchise_abbr: player.Franchise?.abbr ?? null,
+      franchise_logo_url: franchiseLogo,
+      franchise_color: franchise?.color ?? null,
+      franchise_conf: setRewardSource.franchise_conf ?? null,
+      card_type: 'set_reward' as const,
+      tier_name: 'Set Reward',
+      tier_abbr: 'SR',
+      rarity: 'prismatic',
+      stat_gpg: 0, stat_apg: 0, stat_svpg: 0, stat_win_pct: 0,
+      salary: 0, overall_rating: 0, season_number: 3,
+    };
+  })() : null;
+
   const showcaseCards = rarities.map((rarity, i) => {
     const tierName = tiersForSlots[i];
     if (!tierName) return null;
@@ -124,6 +150,22 @@ export default async function ShowcasePage() {
             borderRadius: 'var(--radius-xl)', boxShadow: 'inset 0 0 50px rgba(0,0,0,0.5)',
           }}>
             <TradingCard card={randomGM} />
+          </div>
+        </div>
+      )}
+
+      {setRewardCard && (
+        <div style={{ marginTop: '5rem' }}>
+          <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
+            <h2 className="page-title" style={{ fontSize: '1.75rem' }}>Set Reward Cards</h2>
+            <p className="page-subtitle">Earned by completing a full franchise set — one of the rarest cards you can own.</p>
+          </div>
+          <div style={{
+            display: 'flex', justifyContent: 'center',
+            padding: '3rem', background: '#0a0a1a',
+            borderRadius: 'var(--radius-xl)', boxShadow: 'inset 0 0 50px rgba(0,0,0,0.5)',
+          }}>
+            <TradingCard card={setRewardCard} />
           </div>
         </div>
       )}

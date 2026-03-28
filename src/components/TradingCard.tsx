@@ -6,7 +6,7 @@ import { Coins } from 'lucide-react';
 interface TradingCardProps {
   card: {
     id: string;
-    card_type?: 'player' | 'gm';
+    card_type?: 'player' | 'gm' | 'set_reward';
     player_name: string;
     player_avatar_url: string | null;
     franchise_name: string | null;
@@ -172,6 +172,55 @@ export default function TradingCard({ card, onClick, showPrice, size = 'normal' 
             <div className="gm-player-name">{card.player_name}</div>
             <div className="gm-role-label">GENERAL MANAGER</div>
             <div className="gm-franchise-name">{card.franchise_name}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- Set Reward card ----
+  if (card.card_type === 'set_reward') {
+    const isSuper = card.player_name.includes('Super Set');
+    const setLabel = isSuper ? 'SUPER SET' : `${card.rarity.toUpperCase()} SET`;
+    const srColor = card.franchise_color ?? '#8b5cf6';
+
+    return (
+      <div
+        ref={cardRef}
+        className={`set-reward-card ${sizeClass} ${isHovered ? 'is-hovered' : ''}`}
+        style={{ '--sr-color': srColor } as React.CSSProperties}
+        {...sharedHandlers}
+      >
+        <div className="sr-inner">
+          <div className="sr-stars" />
+          <div className="sr-glare" />
+
+          <div className="sr-header">
+            <span className="sr-trophy">🏆</span>
+            <span className="sr-set-badge">{setLabel}</span>
+          </div>
+
+          <div className="sr-emblem">
+            <div className="sr-logo-glow" />
+            <div className="sr-logo-ring" />
+            {card.franchise_logo_url ? (
+              <img
+                src={card.franchise_logo_url}
+                alt={card.franchise_name || ''}
+                className="sr-logo"
+                onError={e => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : (
+              <div className="sr-logo-placeholder">
+                {(card.franchise_name ?? card.player_name).charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+
+          <div className="sr-footer">
+            <div className="sr-complete-label">✦ Complete Set ✦</div>
+            <div className="sr-franchise-name">{card.franchise_name ?? card.player_name}</div>
+            <div className="sr-season">Season {card.season_number}</div>
           </div>
         </div>
       </div>

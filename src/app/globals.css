@@ -969,6 +969,233 @@ body {
 .trading-card-sm .gm-franchise-name { font-size: 0.95rem; }
 .trading-card-sm .gm-name-section { padding: 0.4rem 0.5rem 0.6rem; }
 
+/* ============================================================
+   SET REWARD CARD — Earned by completing a full franchise set
+   ============================================================ */
+
+@property --sr-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes srSpin {
+  to { --sr-angle: 360deg; }
+}
+
+@keyframes srGlowPulse {
+  from { transform: scale(0.88); opacity: 0.45; }
+  to   { transform: scale(1.12); opacity: 0.85; }
+}
+
+@keyframes srStarTwinkle {
+  0%   { opacity: 0.3; }
+  100% { opacity: 0.78; }
+}
+
+/* Outer card shell — the spinning conic border IS the background, padding creates the border */
+.set-reward-card {
+  width: 260px;
+  aspect-ratio: 0.65;
+  border-radius: var(--radius-lg);
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+  perspective: 1000px;
+  z-index: 1;
+  padding: 3px;
+  background: conic-gradient(
+    from var(--sr-angle),
+    #fbbf24 0%, #8b5cf6 16%, #3b82f6 34%, #ec4899 50%, #10b981 68%, #fbbf24 100%
+  );
+  animation: srSpin 3s linear infinite;
+  box-shadow:
+    0 0 35px rgba(139,92,246,0.55),
+    0 0 70px rgba(236,72,153,0.3),
+    0 0 110px rgba(59,130,246,0.2);
+}
+
+.set-reward-card.is-hovered {
+  transform: perspective(1000px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg)) scale3d(1.06, 1.06, 1.06);
+  z-index: 10;
+  box-shadow:
+    0 0 55px rgba(139,92,246,0.75),
+    0 0 100px rgba(236,72,153,0.5),
+    0 0 150px rgba(59,130,246,0.3);
+}
+
+/* Inner card body */
+.sr-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: calc(var(--radius-lg) - 2px);
+  background: #080c18;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Slow prismatic color wash */
+.sr-inner::before {
+  content: '';
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: linear-gradient(
+    150deg,
+    rgba(59,130,246,0.10) 0%,
+    rgba(139,92,246,0.12) 35%,
+    rgba(236,72,153,0.10) 65%,
+    rgba(251,191,36,0.08) 100%
+  );
+  background-size: 300% 300%;
+  animation: prismShift 6s linear infinite;
+}
+
+/* Franchise-color ambient bloom at card center */
+.sr-inner::after {
+  content: '';
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 55%, var(--sr-color, #8b5cf6) 0%, transparent 60%);
+  opacity: 0.22;
+}
+
+/* Twinkling star/particle field */
+.sr-stars {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background-image:
+    radial-gradient(circle, rgba(255,255,255,0.95) 1.3px, transparent 1.3px),
+    radial-gradient(circle, rgba(251,191,36,0.85)  1px,   transparent 1px),
+    radial-gradient(circle, rgba(139,92,246,0.85)  0.9px, transparent 0.9px),
+    radial-gradient(circle, rgba(255,255,255,0.80) 0.8px, transparent 0.8px),
+    radial-gradient(circle, rgba(59,130,246,0.85)  1px,   transparent 1px),
+    radial-gradient(circle, rgba(236,72,153,0.80)  0.7px, transparent 0.7px);
+  background-size: 100px 80px, 72px 88px, 92px 62px, 58px 72px, 124px 96px, 80px 60px;
+  background-position: 14px 22px, 44px 8px, 68px 52px, 28px 64px, 88px 32px, 52px 74px;
+  animation: srStarTwinkle 3.5s ease-in-out infinite alternate;
+}
+
+/* Mouse-follow glare */
+.sr-glare {
+  position: absolute; inset: 0; z-index: 10; pointer-events: none;
+  background: radial-gradient(circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255,255,255,0.22) 0%, transparent 55%);
+  opacity: 0; transition: opacity 0.3s ease;
+  mix-blend-mode: overlay; border-radius: inherit;
+}
+.set-reward-card.is-hovered .sr-glare { opacity: 1; }
+
+/* Header bar */
+.sr-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px 6px;
+  position: relative; z-index: 3;
+}
+
+.sr-trophy {
+  font-size: 1.1rem; line-height: 1;
+  filter: drop-shadow(0 0 8px rgba(251,191,36,0.9));
+  animation: srStarTwinkle 2s ease-in-out infinite alternate;
+}
+
+.sr-set-badge {
+  font-size: 0.57rem; font-weight: 900;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 2px 9px; border-radius: 10px;
+  background: linear-gradient(to right, #fbbf24, #f59e0b);
+  color: #000;
+  box-shadow: 0 0 10px rgba(251,191,36,0.5);
+}
+
+/* Central franchise emblem */
+.sr-emblem {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  position: relative; z-index: 2;
+}
+
+/* Franchise-color glow blob behind the ring */
+.sr-logo-glow {
+  position: absolute;
+  width: 150px; height: 150px; border-radius: 50%;
+  background: radial-gradient(circle, var(--sr-color, #8b5cf6) 0%, transparent 70%);
+  filter: blur(22px); opacity: 0.6;
+  animation: srGlowPulse 2.5s ease-in-out infinite alternate;
+}
+
+/* Spinning rainbow ring */
+.sr-logo-ring {
+  position: absolute;
+  width: 134px; height: 134px; border-radius: 50%;
+  background: conic-gradient(
+    from var(--sr-angle),
+    #fbbf24 0%, #8b5cf6 16%, #3b82f6 34%, #ec4899 50%, #10b981 68%, #fbbf24 100%
+  );
+  animation: srSpin 5s linear infinite reverse;
+}
+/* Dark cutout to make it a ring */
+.sr-logo-ring::after {
+  content: ''; position: absolute; inset: 4px;
+  border-radius: 50%; background: #080c18;
+}
+
+/* Franchise logo */
+.sr-logo {
+  width: 74px; height: 74px; object-fit: contain;
+  position: relative; z-index: 3;
+  filter: drop-shadow(0 0 10px rgba(255,255,255,0.55)) drop-shadow(0 0 22px rgba(255,255,255,0.25));
+}
+
+.sr-logo-placeholder {
+  width: 74px; height: 74px; border-radius: 50%;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem; font-weight: 900;
+  color: rgba(255,255,255,0.4);
+  position: relative; z-index: 3;
+}
+
+/* Footer */
+.sr-footer {
+  padding: 12px 12px 14px; text-align: center;
+  position: relative; z-index: 3;
+  background: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.6) 100%);
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.sr-complete-label {
+  font-size: 0.48rem; font-weight: 900;
+  letter-spacing: 3px; text-transform: uppercase;
+  color: rgba(251,191,36,0.65);
+  margin-bottom: 5px;
+}
+
+.sr-franchise-name {
+  font-size: 1.05rem; font-weight: 900;
+  font-family: 'Orbitron', sans-serif;
+  color: #fff; letter-spacing: 0.3px;
+  text-shadow: 0 0 20px rgba(255,255,255,0.35);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.sr-season {
+  font-size: 0.58rem;
+  color: rgba(255,255,255,0.3);
+  letter-spacing: 2.5px; text-transform: uppercase;
+  margin-top: 5px;
+}
+
+/* Small-size overrides */
+.trading-card-sm.set-reward-card { width: 180px; }
+.trading-card-sm .sr-logo        { width: 50px; height: 50px; }
+.trading-card-sm .sr-logo-ring   { width: 92px; height: 92px; }
+.trading-card-sm .sr-logo-glow   { width: 100px; height: 100px; }
+.trading-card-sm .sr-franchise-name { font-size: 0.75rem; }
+.trading-card-sm .sr-trophy      { font-size: 0.8rem; }
+.trading-card-sm .sr-set-badge   { font-size: 0.46rem; padding: 2px 6px; }
+.trading-card-sm .sr-footer      { padding: 8px 8px 10px; }
+.trading-card-sm .sr-complete-label { font-size: 0.4rem; letter-spacing: 2px; }
+.trading-card-sm .sr-season      { font-size: 0.48rem; }
+
 /* ---- Card Grid ---- */
 .card-grid {
   display: grid;

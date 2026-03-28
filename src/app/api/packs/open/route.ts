@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, getUserById, getPacksOpenedToday, incrementPacksOpened, createPack, addCardToUser, addCardToPack, isAdmin, updateCoins, recordCoinTransaction, consumeInventoryPack, getInventoryPackType, incrementChallengeProgress } from '@/lib/db';
+import { getUserByDiscordId, getUserById, getPacksOpenedToday, incrementPacksOpened, createPack, addCardToUser, addCardToPack, isAdmin, updateCoins, recordCoinTransaction, consumeInventoryPack, getInventoryPackType, incrementChallengeProgress, getFranchiseLoyaltyRotation } from '@/lib/db';
 import { generatePackCards, PACK_CONFIGS, type PackType } from '@/lib/cards';
 
 const DAILY_FREE_PACKS = parseInt(process.env.DAILY_FREE_PACKS || '3', 10);
@@ -22,9 +22,10 @@ export async function POST(request: NextRequest) {
     const packType = getInventoryPackType(user.id, body.inventory_id);
     if (!packType) return NextResponse.json({ error: 'Pack not found in your inventory' }, { status: 404 });
 
+    const loyaltyFranchiseId = packType === 'franchise_loyalty' ? getFranchiseLoyaltyRotation()?.franchise_id : undefined;
     let cards;
     try {
-      cards = await generatePackCards(CARDS_PER_PACK, packType as PackType);
+      cards = await generatePackCards(CARDS_PER_PACK, packType as PackType, loyaltyFranchiseId);
     } catch (error) {
       console.error('Pack opening error:', error);
       // Pack not consumed yet — user can try again
@@ -69,7 +70,8 @@ export async function POST(request: NextRequest) {
 
   try {
     // Generate cards first — if the CSA API fails, no coins are deducted
-    const cards = await generatePackCards(CARDS_PER_PACK, packType);
+    const loyaltyFranchiseId = packType === 'franchise_loyalty' ? getFranchiseLoyaltyRotation()?.franchise_id : undefined;
+    const cards = await generatePackCards(CARDS_PER_PACK, packType, loyaltyFranchiseId);
 
     if (isPaid) updateCoins(user.id, -PACK_CONFIGS[packType].cost);
 

@@ -166,6 +166,11 @@ function initializeSchema(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_user_cards_user ON user_cards(user_id);
 
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS featured_cards (
       position INTEGER PRIMARY KEY CHECK(position BETWEEN 1 AND 3),
       card_id TEXT,
@@ -2337,4 +2342,72 @@ export function purchaseShopSlot(userId: number, slotId: number): { item_type: s
   }
 
   return { item_type: slot.item_type, pack_type: slot.pack_type ?? undefined, coin_amount: slot.coin_amount ?? undefined, newBalance: updated.coins };
+}
+
+// ---- Franchise Loyalty Pack Rotation ----
+
+export interface FranchiseLoyaltyRotation {
+  franchise_id: number;
+  franchise_name: string;
+  franchise_color: string | null;
+  franchise_logo_url: string | null;
+  franchise_abbr: string | null;
+  franchise_conf: string | null;
+  period_started_at: string;
+  period_ends_at: string;
+}
+
+const LOYALTY_PERIOD_MS = 3 * 24 * 60 * 60 * 1000;
+
+function fisherYates<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+export function getFranchiseLoyaltyRotation(): FranchiseLoyaltyRotation | null {
+  const db = getDb();
+
+  const franchises = db.prepare(`
+    SELECT DISTINCT franchise_id, franchise_name, franchise_color, franchise_logo_url, franchise_abbr, franchise_conf
+    FROM cards
+    WHERE franchise_id IS NOT NULL AND card_type = 'player' AND is_active = 1
+    ORDER BY franchise_id ASC
+  `).all() as { franchise_id: number; franchise_name: string; franchise_color: string | null; franchise_logo_url: string | null; franchise_abbr: string | null; franchise_conf: string | null }[];
+
+  if (franchises.length === 0) return null;
+
+  const franchiseIds = franchises.map(f => f.franchise_id);
+  const settingRow = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('franchise_loyalty_rotation') as { value: string } | undefined;
+
+  let state: { rotation_order: number[]; current_index: number; period_started_at: string };
+  const now = Date.now();
+
+  if (!settingRow) {
+    state = { rotation_order: fisherYates(franchiseIds), current_index: 0, period_started_at: new Date().toISOString() };
+    db.prepare('INSERT INTO app_settings (key, value) VALUES (?, ?)').run('franchise_loyalty_rotation', JSON.stringify(state));
+  } else {
+    state = JSON.parse(settingRow.value) as typeof state;
+    const elapsed = now - new Date(state.period_started_at).getTime();
+
+    if (elapsed >= LOYALTY_PERIOD_MS) {
+      const periodsElapsed = Math.floor(elapsed / LOYALTY_PERIOD_MS);
+      const rawNewIndex = state.current_index + periodsElapsed;
+      const completedCycles = Math.floor(rawNewIndex / state.rotation_order.length);
+      const newOrder = completedCycles > 0 ? fisherYates(franchiseIds) : state.rotation_order;
+      const newIndex = rawNewIndex % newOrder.length;
+      const newStart = new Date(new Date(state.period_started_at).getTime() + periodsElapsed * LOYALTY_PERIOD_MS).toISOString();
+      state = { rotation_order: newOrder, current_index: newIndex, period_started_at: newStart };
+      db.prepare('UPDATE app_settings SET value = ? WHERE key = ?').run(JSON.stringify(state), 'franchise_loyalty_rotation');
+    }
+  }
+
+  const franchiseId = state.rotation_order[state.current_index] ?? franchiseIds[0];
+  const franchise = franchises.find(f => f.franchise_id === franchiseId) ?? franchises[0];
+  const periodEnd = new Date(new Date(state.period_started_at).getTime() + LOYALTY_PERIOD_MS).toISOString();
+
+  return { ...franchise, period_started_at: state.period_started_at, period_ends_at: periodEnd };
 }

@@ -1,6 +1,6 @@
 // Client-safe pack configuration — no Node.js imports
 
-export type PackType = 'standard' | 'elite' | 'apex';
+export type PackType = 'standard' | 'elite' | 'apex' | 'franchise_loyalty';
 
 export const PACK_CONFIGS: Record<PackType, {
   name: string;
@@ -29,5 +29,12 @@ export const PACK_CONFIGS: Record<PackType, {
     flavour: 'Only the rarest survive.',
     cost: 1350,
     allowedRarities: ['diamond', 'holographic', 'prismatic'],
+  },
+  franchise_loyalty: {
+    name: 'Franchise Loyalty Pack',
+    subtitle: 'One Franchise Only',
+    flavour: 'All 5 cards from the featured franchise. Rotation changes every 3 days.',
+    cost: 350,
+    allowedRarities: ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'holographic', 'prismatic'],
   },
 };

@@ -1971,6 +1971,188 @@ body {
   color: #fff;
 }
 
+/* ---- FRANCHISE LOYALTY pack visual ---- */
+.pv-loyalty {
+  background: linear-gradient(170deg, var(--fl-dark1, #0a1f0e) 0%, var(--fl-dark2, #04090a) 50%, var(--fl-dark1, #0a1f0e) 100%);
+  border: 1.5px solid color-mix(in srgb, var(--fl-color, #22c55e) 50%, transparent);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.55), 0 0 32px color-mix(in srgb, var(--fl-color, #22c55e) 15%, transparent);
+  animation: loyaltyBorderPulse 3s ease-in-out infinite;
+}
+@keyframes loyaltyBorderPulse {
+  0%,100% { border-color: color-mix(in srgb, var(--fl-color, #22c55e) 50%, transparent); }
+  50%     { border-color: color-mix(in srgb, var(--fl-color, #22c55e) 90%, transparent); box-shadow: 0 4px 24px rgba(0,0,0,0.55), 0 0 55px color-mix(in srgb, var(--fl-color, #22c55e) 30%, transparent); }
+}
+.pv-loyalty:hover {
+  box-shadow: 0 24px 60px rgba(0,0,0,0.65), 0 0 80px color-mix(in srgb, var(--fl-color, #22c55e) 35%, transparent);
+  border-color: var(--fl-color, #22c55e);
+}
+.pv-loyalty::before {
+  content: '';
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0,
+    transparent 14px,
+    color-mix(in srgb, var(--fl-color, #22c55e) 5%, transparent) 14px,
+    color-mix(in srgb, var(--fl-color, #22c55e) 5%, transparent) 15px
+  );
+}
+.pv-loyalty::after {
+  content: '';
+  position: absolute; top: 0; bottom: 0; width: 50%;
+  background: linear-gradient(105deg, transparent, color-mix(in srgb, var(--fl-color, #22c55e) 18%, transparent) 40%, color-mix(in srgb, var(--fl-color, #22c55e) 30%, white) 50%, color-mix(in srgb, var(--fl-color, #22c55e) 18%, transparent) 60%, transparent);
+  z-index: 2; pointer-events: none;
+  animation: pvSweepLoyalty 3.5s ease-in-out infinite;
+}
+@keyframes pvSweepLoyalty {
+  0%   { left: -50%; }
+  100% { left: 155%; }
+}
+.pv-loyalty-seal {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--fl-color, #22c55e) 40%, #000) 0%, var(--fl-color, #22c55e) 50%, color-mix(in srgb, var(--fl-color, #22c55e) 40%, #000) 100%);
+}
+.pv-loyalty-glow {
+  position: absolute;
+  width: 110px; height: 110px; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--fl-color, #22c55e) 30%, transparent) 0%, transparent 70%);
+  filter: blur(14px);
+  animation: loyaltyGlowPulse 2.5s ease-in-out infinite alternate;
+}
+@keyframes loyaltyGlowPulse {
+  from { transform: scale(0.8); opacity: 0.5; }
+  to   { transform: scale(1.2); opacity: 1; }
+}
+.pv-loyalty-ring {
+  position: absolute;
+  width: 110px; height: 110px; border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--fl-color, #22c55e) 60%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--fl-color, #22c55e) 15%, transparent),
+              inset 0 0 0 2px color-mix(in srgb, var(--fl-color, #22c55e) 10%, transparent);
+  animation: loyaltyRingSpin 8s linear infinite;
+}
+@keyframes loyaltyRingSpin {
+  to { transform: rotate(360deg); }
+}
+.pv-loyalty-ring::before {
+  content: '';
+  position: absolute;
+  top: -3px; left: 40%;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--fl-color, #22c55e);
+  box-shadow: 0 0 8px 2px var(--fl-color, #22c55e);
+}
+.pv-loyalty-logo {
+  width: 68px; height: 68px; object-fit: contain;
+  position: relative; z-index: 1;
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--fl-color, #22c55e) 60%, transparent));
+}
+.pv-loyalty-abbr {
+  width: 68px; height: 68px; border-radius: 50%;
+  background: color-mix(in srgb, var(--fl-color, #22c55e) 15%, transparent);
+  border: 2px solid color-mix(in srgb, var(--fl-color, #22c55e) 40%, transparent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem; font-weight: 900;
+  color: var(--fl-color, #22c55e);
+  position: relative; z-index: 1;
+}
+.pv-loyalty-five { color: color-mix(in srgb, var(--fl-color, #22c55e) 70%, white); margin-top: 4px; }
+.pv-loyalty-name { color: var(--fl-color, #22c55e); }
+
+/* ---- Loyalty section in shop ---- */
+.loyalty-section {
+  margin-top: 3rem;
+  border: 1px solid color-mix(in srgb, var(--fl-color, #22c55e) 25%, transparent);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fl-color, #22c55e) 4%, var(--bg-card));
+}
+.loyalty-section-header {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--fl-color, #22c55e) 15%, transparent);
+  background: color-mix(in srgb, var(--fl-color, #22c55e) 6%, var(--bg-secondary));
+}
+.loyalty-rotating-badge {
+  font-size: 0.58rem; font-weight: 900; letter-spacing: 1.5px;
+  padding: 2px 8px; border-radius: 10px;
+  background: rgba(52,211,153,0.2); color: #34d399;
+  border: 1px solid rgba(52,211,153,0.4);
+}
+.loyalty-card {
+  display: flex; align-items: center; gap: 3rem;
+  padding: 2.5rem;
+  position: relative;
+  overflow: hidden;
+}
+.loyalty-card-glow {
+  position: absolute; inset: 0; pointer-events: none; z-index: 0;
+}
+.loyalty-pack-side {
+  flex-shrink: 0; position: relative; z-index: 1;
+}
+.loyalty-info-side {
+  flex: 1; position: relative; z-index: 1;
+}
+.loyalty-franchise-row {
+  display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem;
+}
+.loyalty-franchise-logo {
+  width: 48px; height: 48px; object-fit: contain;
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--fl-color, #22c55e) 50%, transparent));
+}
+.loyalty-franchise-name {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 1.3rem; font-weight: 900;
+  letter-spacing: 0.04em;
+}
+.loyalty-franchise-sub {
+  font-size: 0.7rem; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 1.5px;
+  margin-top: 2px;
+}
+.loyalty-flavour {
+  font-size: 0.88rem; color: var(--text-secondary);
+  margin-bottom: 1rem; line-height: 1.5;
+}
+.loyalty-buy-btn {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--fl-color, #22c55e) 80%, #000) 0%, color-mix(in srgb, var(--fl-color, #22c55e) 60%, #000) 100%);
+  color: #fff; border: none;
+  padding: 0.65rem 1.5rem;
+  font-weight: 700; letter-spacing: 0.04em;
+  transition: filter 0.2s ease, transform 0.15s ease;
+  box-shadow: 0 0 18px color-mix(in srgb, var(--fl-color, #22c55e) 30%, transparent);
+}
+.loyalty-buy-btn:hover:not(:disabled) {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 24px color-mix(in srgb, var(--fl-color, #22c55e) 45%, transparent);
+}
+.loyalty-buy-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+/* Countdown timer */
+.loyalty-countdown {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 0.75rem; color: var(--text-secondary);
+}
+.loyalty-countdown svg { flex-shrink: 0; }
+.lcd-val {
+  font-family: 'Orbitron', sans-serif; font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--fl-color, #22c55e);
+  background: color-mix(in srgb, var(--fl-color, #22c55e) 12%, var(--bg-card));
+  padding: 1px 5px; border-radius: 4px;
+  min-width: 26px; text-align: center;
+}
+.lcd-unit {
+  font-size: 0.62rem; color: var(--text-muted);
+  margin-right: 2px;
+}
+
+@media (max-width: 600px) {
+  .loyalty-card { flex-direction: column; align-items: flex-start; padding: 1.5rem; }
+  .loyalty-pack-side { align-self: center; }
+}
+
 /* ===== SHOP PAGE LAYOUT ===== */
 .shop-grid {
   display: flex;

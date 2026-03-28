@@ -257,14 +257,31 @@ export function generateGMCard(gmData: GMCardData): Omit<Card, 'created_at'> {
   return card;
 }
 
-export async function generatePackCards(count: number = 5, packType: PackType = 'standard'): Promise<Omit<Card, 'created_at'>[]> {
+export async function generatePackCards(count: number = 5, packType: PackType = 'standard', franchiseId?: number): Promise<Omit<Card, 'created_at'>[]> {
   const [pool, gmPool] = await Promise.all([getPlayerPool(), getGMPool()]);
   if (pool.length === 0) throw new Error('No players available for card generation');
 
   const gmCsaIds = new Set(gmPool.map(g => g.gm_csa_id));
   const playerPool = pool.filter(e => !gmCsaIds.has(e.player.Player.csa_id));
-  const wcPool = playerPool.filter(e => e.player.tier?.toLowerCase().replace(/[\s_]+/g, '') === 'worldclass');
-  const normalPool = playerPool.filter(e => e.player.tier?.toLowerCase().replace(/[\s_]+/g, '') !== 'worldclass');
+  const allWcPool = playerPool.filter(e => e.player.tier?.toLowerCase().replace(/[\s_]+/g, '') === 'worldclass');
+  const allNormalPool = playerPool.filter(e => e.player.tier?.toLowerCase().replace(/[\s_]+/g, '') !== 'worldclass');
+
+  // Filter by franchise if specified (fall back to full pools if franchise has no cards)
+  const wcPool = franchiseId
+    ? (allWcPool.filter(e => e.player.Franchise?.id === franchiseId).length > 0
+        ? allWcPool.filter(e => e.player.Franchise?.id === franchiseId)
+        : allWcPool)
+    : allWcPool;
+  const normalPool = franchiseId
+    ? (allNormalPool.filter(e => e.player.Franchise?.id === franchiseId).length > 0
+        ? allNormalPool.filter(e => e.player.Franchise?.id === franchiseId)
+        : allNormalPool)
+    : allNormalPool;
+  const filteredGmPool = franchiseId
+    ? (gmPool.filter(g => g.franchise_id === franchiseId).length > 0
+        ? gmPool.filter(g => g.franchise_id === franchiseId)
+        : gmPool)
+    : gmPool;
 
   const cards: Omit<Card, 'created_at'>[] = [];
   const usedPlayerIds = new Set<number>();
@@ -298,11 +315,11 @@ export async function generatePackCards(count: number = 5, packType: PackType = 
 
     if (rarity === 'prismatic') {
       // Prismatic: eligible pool = WC players + GMs (fallback to all players if both empty)
-      const hasPrismaticSpecial = wcPool.length > 0 || gmPool.length > 0;
+      const hasPrismaticSpecial = wcPool.length > 0 || filteredGmPool.length > 0;
 
       if (hasPrismaticSpecial) {
         // Weighted pick: WC players vs GMs
-        const totalOptions = wcPool.length + gmPool.length;
+        const totalOptions = wcPool.length + filteredGmPool.length;
         const roll = Math.floor(Math.random() * totalOptions);
 
         if (roll < wcPool.length) {
@@ -310,7 +327,7 @@ export async function generatePackCards(count: number = 5, packType: PackType = 
           usedPlayerIds.add(entry.player.Player.csa_id);
           cards.push(await generateCard(entry, 'prismatic', seasonOverride));
         } else {
-          const entry = pickGM(gmPool);
+          const entry = pickGM(filteredGmPool);
           usedGMIds.add(entry.id);
           cards.push(generateGMCard(entry));
         }

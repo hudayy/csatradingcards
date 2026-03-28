@@ -314,28 +314,21 @@ export async function generatePackCards(count: number = 5, packType: PackType = 
     const rarity = rollRarityForPack(packType);
 
     if (rarity === 'prismatic') {
-      // Prismatic: eligible pool = WC players + GMs (fallback to all players if both empty)
-      const hasPrismaticSpecial = wcPool.length > 0 || filteredGmPool.length > 0;
+      // Prismatic: all players (WC + normal) and GMs equally weighted
+      const allPrismaticPlayers = (wcPool.length + normalPool.length > 0)
+        ? [...wcPool, ...normalPool]
+        : pool;
+      const totalOptions = allPrismaticPlayers.length + filteredGmPool.length;
+      const roll = Math.floor(Math.random() * totalOptions);
 
-      if (hasPrismaticSpecial) {
-        // Weighted pick: WC players vs GMs
-        const totalOptions = wcPool.length + filteredGmPool.length;
-        const roll = Math.floor(Math.random() * totalOptions);
-
-        if (roll < wcPool.length) {
-          const entry = pickPlayer(wcPool);
-          usedPlayerIds.add(entry.player.Player.csa_id);
-          cards.push(await generateCard(entry, 'prismatic', seasonOverride));
-        } else {
-          const entry = pickGM(filteredGmPool);
-          usedGMIds.add(entry.id);
-          cards.push(generateGMCard(entry));
-        }
-      } else {
-        // Fallback: pick from all players at prismatic
-        const entry = pickPlayer(normalPool.length > 0 ? normalPool : pool);
+      if (roll < allPrismaticPlayers.length) {
+        const entry = pickPlayer(allPrismaticPlayers);
         usedPlayerIds.add(entry.player.Player.csa_id);
         cards.push(await generateCard(entry, 'prismatic', seasonOverride));
+      } else {
+        const entry = pickGM(filteredGmPool);
+        usedGMIds.add(entry.id);
+        cards.push(generateGMCard(entry));
       }
     } else {
       // Non-prismatic: regular players only (no WC, no GMs)

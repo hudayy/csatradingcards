@@ -95,37 +95,29 @@ export default function HomePage() {
             <>
               <Link href="/packs" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><Package size={18} /> Open Packs</Link>
               <Link href="/collection" className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><FolderOpen size={18} /> My Collection</Link>
+              {streak !== null && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                  <button
+                    className={`btn ${streak.claimed_today ? 'btn-secondary' : 'btn-primary'}`}
+                    onClick={handleClaimBonus}
+                    disabled={streak.claimed_today || claimingBonus}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+                  >
+                    <Gift size={18} />
+                    {streak.claimed_today ? 'Bonus Claimed' : claimingBonus ? 'Claiming...' : 'Claim Daily Bonus'}
+                  </button>
+                  <span style={{ fontSize: '0.72rem', color: streak.streak > 0 ? '#f97316' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <Flame size={11} />
+                    {streak.streak}-day streak{streak.next_milestone ? ` · ${streak.next_milestone - streak.streak} to next reward` : ''}
+                  </span>
+                </div>
+              )}
             </>
           ) : (
             <a href="/api/auth/discord" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}><LogIn size={18} /> Login with Discord</a>
           )}
         </div>
-
-        {user && streak !== null && (
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: '1rem', marginTop: '1rem',
-            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: 'var(--radius-lg)', padding: '0.75rem 1.25rem', flexWrap: 'wrap', justifyContent: 'center',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Flame size={18} style={{ color: streak.streak > 0 ? '#f97316' : 'var(--text-secondary)' }} />
-              <span style={{ fontWeight: 700 }}>{streak.streak}</span>
-              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                day streak{streak.next_milestone ? ` — ${streak.next_milestone - streak.streak} to next reward` : ''}
-              </span>
-            </div>
-            <button
-              className={`btn ${streak.claimed_today ? 'btn-secondary' : 'btn-primary'}`}
-              onClick={handleClaimBonus}
-              disabled={streak.claimed_today || claimingBonus}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.4rem 0.9rem' }}
-            >
-              <Gift size={15} />
-              {streak.claimed_today ? 'Bonus Claimed' : claimingBonus ? 'Claiming...' : 'Claim Daily Bonus'}
-            </button>
-            {bonusMsg && <span style={{ fontSize: '0.85rem', color: 'var(--accent-green)' }}>{bonusMsg}</span>}
-          </div>
-        )}
+        {bonusMsg && <p style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--accent-green)' }}>{bonusMsg}</p>}
 
         <div className="featured-cards">
           {featuredCards.map(card => (

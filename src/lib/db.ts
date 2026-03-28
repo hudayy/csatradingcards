@@ -1580,14 +1580,17 @@ export function getPublicUserProfile(userId: number): {
 
 // ---- Card valuation ----
 
+// Base values derived from pack economics:
+// Standard pack = 200 coins / 5 cards = 40 coins avg card value
+// Values scaled by inverse drop rate so EV ≈ pack cost
 export const BASE_CARD_VALUES: Record<string, number> = {
-  bronze: 40,
-  silver: 80,
-  gold: 200,
-  platinum: 500,
-  diamond: 1500,
-  holographic: 6000,
-  prismatic: 25000,
+  bronze: 10,
+  silver: 18,
+  gold: 30,
+  platinum: 65,
+  diamond: 120,
+  holographic: 450,
+  prismatic: 1400,
 };
 
 export function estimateCardValue(cardId: string): {
@@ -1602,14 +1605,16 @@ export function estimateCardValue(cardId: string): {
   if (!card) return { value: 0, basis: 'base', copy_count: 0, recent_sales_count: 0, recent_avg: null };
 
   const salvage = SALVAGE_VALUES[card.rarity] ?? 6;
-  const base = BASE_CARD_VALUES[card.rarity] ?? 40;
+  const base = BASE_CARD_VALUES[card.rarity] ?? 10;
   const copyCount = (db.prepare('SELECT COUNT(*) as n FROM user_cards WHERE card_id = ?').get(cardId) as { n: number }).n;
 
+  // Recent sales for this specific card (last 5)
   const cardSalesRow = db.prepare(`
     SELECT AVG(price) as avg_price, COUNT(*) as cnt
     FROM (SELECT price FROM marketplace_listings WHERE card_id = ? AND status = 'sold' ORDER BY sold_at DESC LIMIT 5)
   `).get(cardId) as { avg_price: number | null; cnt: number };
 
+  // Recent sales across all cards of this rarity (last 30)
   const raritySalesRow = db.prepare(`
     SELECT AVG(sub.price) as avg_price
     FROM (
@@ -1620,6 +1625,11 @@ export function estimateCardValue(cardId: string): {
     ) sub
   `).get(card.rarity) as { avg_price: number | null };
 
+  // Active listings for this card (supply pressure)
+  const listedCount = (db.prepare(
+    `SELECT COUNT(*) as n FROM marketplace_listings WHERE card_id = ? AND status = 'active'`
+  ).get(cardId) as { n: number }).n;
+
   const cardAvg = cardSalesRow.avg_price;
   const cardCnt = cardSalesRow.cnt;
   const rarityAvg = raritySalesRow.avg_price;
@@ -1628,21 +1638,41 @@ export function estimateCardValue(cardId: string): {
   let basis: 'sales' | 'rarity_market' | 'base';
 
   if (cardCnt >= 3 && cardAvg) {
-    marketEst = cardAvg;
+    // Strong sales signal — trust it, regress slightly toward rarity avg
+    marketEst = rarityAvg ? cardAvg * 0.85 + rarityAvg * 0.15 : cardAvg;
     basis = 'sales';
   } else if (cardCnt >= 1 && cardAvg) {
-    marketEst = cardAvg * 0.65 + (rarityAvg ?? base) * 0.35;
+    // Weak sales signal — blend evenly with rarity-level data
+    marketEst = cardAvg * 0.5 + (rarityAvg ?? base) * 0.5;
     basis = 'sales';
   } else if (rarityAvg) {
-    marketEst = rarityAvg * 0.45 + base * 0.55;
+    // No card sales but rarity-level data exists — lean on market data
+    marketEst = rarityAvg * 0.7 + base * 0.3;
     basis = 'rarity_market';
   } else {
+    // No market data at all — use base value
     marketEst = base;
     basis = 'base';
   }
 
-  const scarcity = copyCount <= 1 ? 2.5 : copyCount <= 2 ? 2.0 : copyCount <= 5 ? 1.5 : copyCount <= 10 ? 1.3 : copyCount <= 20 ? 1.15 : copyCount <= 50 ? 1.05 : 1.0;
-  const value = Math.round(Math.max(salvage, marketEst) * scarcity);
+  // Supply factor: conservative adjustment based on total copies
+  // Only a mild premium for genuinely scarce cards; discount for abundant ones
+  const supplyFactor =
+    copyCount <= 1 ? 1.15 :
+    copyCount <= 3 ? 1.05 :
+    copyCount <= 10 ? 1.0 :
+    copyCount <= 25 ? 0.95 :
+    copyCount <= 50 ? 0.90 :
+    0.85;
+
+  // Listing pressure: if a high % of copies are listed, supply is flooding the market
+  const listingPressure = copyCount > 0 ? listedCount / copyCount : 0;
+  const listingDiscount =
+    listingPressure > 0.5 ? 0.85 :
+    listingPressure > 0.3 ? 0.92 :
+    1.0;
+
+  const value = Math.round(Math.max(salvage, marketEst * supplyFactor * listingDiscount));
 
   return { value, basis, copy_count: copyCount, recent_sales_count: cardCnt, recent_avg: cardAvg ? Math.round(cardAvg) : null };
 }
@@ -1659,6 +1689,7 @@ export function getUserCollectionValue(userId: number): number {
 
   if (cards.length === 0) return 0;
 
+  // Rarity-level averages from recent sales
   const rarityAvgs = db.prepare(`
     SELECT sub.rarity, AVG(sub.price) as avg_price
     FROM (
@@ -1671,34 +1702,60 @@ export function getUserCollectionValue(userId: number): number {
   `).all() as { rarity: string; avg_price: number }[];
   const rarityAvgMap = new Map(rarityAvgs.map(r => [r.rarity, r.avg_price]));
 
+  // Per-card sales averages and counts
   const uniqueCardIds = [...new Set(cards.map(c => c.card_id))];
-  const cardAvgMap = new Map<string, number>();
+  const cardSalesMap = new Map<string, { avg: number; cnt: number }>();
   for (const cardId of uniqueCardIds) {
     const row = db.prepare(`
       SELECT AVG(price) as avg_price, COUNT(*) as cnt
       FROM (SELECT price FROM marketplace_listings WHERE card_id = ? AND status = 'sold' ORDER BY sold_at DESC LIMIT 5)
     `).get(cardId) as { avg_price: number | null; cnt: number };
-    if (row.cnt > 0 && row.avg_price) cardAvgMap.set(cardId, row.avg_price);
+    if (row.cnt > 0 && row.avg_price) cardSalesMap.set(cardId, { avg: row.avg_price, cnt: row.cnt });
+  }
+
+  // Active listing counts per card (for listing pressure)
+  const listingCounts = new Map<string, number>();
+  for (const cardId of uniqueCardIds) {
+    const row = db.prepare(
+      `SELECT COUNT(*) as n FROM marketplace_listings WHERE card_id = ? AND status = 'active'`
+    ).get(cardId) as { n: number };
+    if (row.n > 0) listingCounts.set(cardId, row.n);
   }
 
   let total = 0;
   for (const { card_id, rarity, copy_count } of cards) {
     const salvage = SALVAGE_VALUES[rarity] ?? 6;
-    const base = BASE_CARD_VALUES[rarity] ?? 40;
-    const cardAvg = cardAvgMap.get(card_id);
+    const base = BASE_CARD_VALUES[rarity] ?? 10;
+    const sales = cardSalesMap.get(card_id);
     const rarityAvg = rarityAvgMap.get(rarity);
 
     let marketEst: number;
-    if (cardAvg) {
-      marketEst = cardAvg;
+    if (sales && sales.cnt >= 3) {
+      marketEst = rarityAvg ? sales.avg * 0.85 + rarityAvg * 0.15 : sales.avg;
+    } else if (sales) {
+      marketEst = sales.avg * 0.5 + (rarityAvg ?? base) * 0.5;
     } else if (rarityAvg) {
-      marketEst = rarityAvg * 0.45 + base * 0.55;
+      marketEst = rarityAvg * 0.7 + base * 0.3;
     } else {
       marketEst = base;
     }
 
-    const scarcity = copy_count <= 1 ? 2.5 : copy_count <= 2 ? 2.0 : copy_count <= 5 ? 1.5 : copy_count <= 10 ? 1.3 : copy_count <= 20 ? 1.15 : copy_count <= 50 ? 1.05 : 1.0;
-    total += Math.round(Math.max(salvage, marketEst) * scarcity);
+    const supplyFactor =
+      copy_count <= 1 ? 1.15 :
+      copy_count <= 3 ? 1.05 :
+      copy_count <= 10 ? 1.0 :
+      copy_count <= 25 ? 0.95 :
+      copy_count <= 50 ? 0.90 :
+      0.85;
+
+    const listedCount = listingCounts.get(card_id) ?? 0;
+    const listingPressure = copy_count > 0 ? listedCount / copy_count : 0;
+    const listingDiscount =
+      listingPressure > 0.5 ? 0.85 :
+      listingPressure > 0.3 ? 0.92 :
+      1.0;
+
+    total += Math.round(Math.max(salvage, marketEst * supplyFactor * listingDiscount));
   }
 
   return total;
@@ -2069,14 +2126,17 @@ export function incrementChallengeProgress(userId: number, challengeKey: string,
 
   const periodKey = challenge.type === 'daily' ? getDailyPeriodKey() : getWeeklyPeriodKey();
 
+  const initialProgress = Math.min(amount, challenge.target);
+  const initialCompleted = initialProgress >= challenge.target ? 1 : 0;
+
   db.prepare(`
-    INSERT INTO user_challenges (user_id, challenge_id, period_key, progress, completed)
-    VALUES (?, ?, ?, ?, 0)
+    INSERT INTO user_challenges (user_id, challenge_id, period_key, progress, completed, completed_at)
+    VALUES (?, ?, ?, ?, ?, CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END)
     ON CONFLICT(user_id, challenge_id, period_key) DO UPDATE SET
       progress = MIN(user_challenges.progress + ?, challenges.target),
       completed = CASE WHEN user_challenges.progress + ? >= challenges.target THEN 1 ELSE user_challenges.completed END,
       completed_at = CASE WHEN user_challenges.completed = 0 AND user_challenges.progress + ? >= challenges.target THEN CURRENT_TIMESTAMP ELSE user_challenges.completed_at END
-  `).run(userId, challenge.id, periodKey, Math.min(amount, challenge.target), amount, amount, amount);
+  `).run(userId, challenge.id, periodKey, initialProgress, initialCompleted, initialCompleted, amount, amount, amount);
 }
 
 export function claimChallengeReward(userId: number, challengeId: number, periodKey: string): { coins: number; pack?: string; newBalance: number } {

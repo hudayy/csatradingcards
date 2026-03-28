@@ -2,23 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Coins, Package, FolderOpen, ShoppingBag, Zap, Crown, Gem, ChevronLeft, LogIn, RefreshCw, Clock } from 'lucide-react';
-import TradingCard from '@/components/TradingCard';
+import { Coins, Package, FolderOpen, ShoppingBag, Zap, Crown, Gem, LogIn, RefreshCw, Clock } from 'lucide-react';
 import { PACK_CONFIGS, type PackType } from '@/lib/pack-config';
 
 const RARITY_COLORS: Record<string, string> = {
   bronze: '#cd7f32', silver: '#c0c0c0', gold: '#ffd700',
   platinum: '#e5e4e2', diamond: '#67e8f9', holographic: '#f472b6', prismatic: '#c084fc',
 };
-
-interface CardData {
-  id: string; player_name: string; player_avatar_url: string | null;
-  franchise_name: string | null; franchise_abbr: string | null; franchise_logo_url?: string | null;
-  franchise_color?: string | null; franchise_conf?: string | null;
-  tier_name: string | null; tier_abbr: string | null; rarity: string; card_type?: 'player' | 'gm';
-  stat_gpg: number; stat_apg: number; stat_svpg: number; stat_win_pct: number;
-  salary: number; overall_rating: number; season_number: number; user_card_id?: number;
-}
 
 const PACK_ICONS: Record<PackType, React.ElementType> = {
   standard: Zap, elite: Crown, apex: Gem,
@@ -50,19 +40,15 @@ function PackVisual({ packType, pulse = false }: { packType: PackType; pulse?: b
   );
 }
 
-type ShopView = 'shop' | 'reveal';
-
 export default function ShopPage() {
-  const [view, setView] = useState<ShopView>('shop');
   const [coins, setCoins] = useState<number | null>(null);
   const [packsRemaining, setPacksRemaining] = useState<number | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<PackType | null>(null);
-  const [lastPackType, setLastPackType] = useState<PackType>('standard');
-  const [revealedCards, setRevealedCards] = useState<CardData[]>([]);
-  const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [buyMsg, setBuyMsg] = useState<string | null>(null);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [shopSlots, setShopSlots] = useState<{ id: number; slot_key: string; item_type: string; pack_type: string | null; coin_amount: number | null; price: number; rotation_ends: string; stock: number | null; sold_count: number }[]>([]);
   const [shopBuying, setShopBuying] = useState<number | null>(null);
   const [shopMsg, setShopMsg] = useState<string | null>(null);
@@ -113,34 +99,24 @@ export default function ShopPage() {
 
   const handleBuy = async (packType: PackType) => {
     if (purchasing) return;
-    const cost = PACK_CONFIGS[packType].cost;
+    const qty = quantities[packType] || 1;
+    const cost = PACK_CONFIGS[packType].cost * qty;
     if (coins === null || coins < cost) return;
-
     setPurchasing(packType);
     setError(null);
-
+    setBuyMsg(null);
     try {
-      const res = await fetch('/api/packs/open', {
+      const res = await fetch('/api/shop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pack_type: packType, paid: true }),
+        body: JSON.stringify({ action: 'buy_pack', pack_type: packType, quantity: qty }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Purchase failed');
-        setPurchasing(null);
-        return;
-      }
-      const newBalance = data.new_balance ?? (coins! - cost);
-      setCoins(newBalance);
-      window.dispatchEvent(new CustomEvent('coinsUpdated', { detail: { balance: newBalance } }));
-      setLastPackType(packType);
-      setRevealedCards(data.cards);
-      setFlippedCards(new Set());
-      setView('reveal');
-    } catch {
-      setError('Network error. Please try again.');
-    }
+      if (!res.ok) { setError(data.error || 'Purchase failed'); setPurchasing(null); return; }
+      setCoins(data.newBalance);
+      window.dispatchEvent(new CustomEvent('coinsUpdated', { detail: { balance: data.newBalance } }));
+      setBuyMsg(`${qty} ${PACK_CONFIGS[packType].name}${qty > 1 ? 's' : ''} added to your inventory!`);
+    } catch { setError('Network error. Please try again.'); }
     setPurchasing(null);
   };
 
@@ -161,76 +137,11 @@ export default function ShopPage() {
     </div>
   );
 
-  if (view === 'reveal') {
-    const unflipped = revealedCards.length - flippedCards.size;
-    return (
-      <div className="container">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
-          <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            onClick={() => { setView('shop'); setRevealedCards([]); setFlippedCards(new Set()); }}>
-            <ChevronLeft size={16} /> Back to Shop
-          </button>
-        </div>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 800, fontFamily: 'Orbitron, sans-serif', marginBottom: '0.5rem' }}>
-            {PACK_CONFIGS[lastPackType].name} Opened!
-          </h2>
-          <p style={{ color: 'var(--text-secondary)' }}>
-            {unflipped > 0 ? `${unflipped} card${unflipped !== 1 ? 's' : ''} left to reveal — click to flip` : 'All cards revealed!'}
-          </p>
-          {unflipped > 0 && (
-            <button
-              className="btn btn-secondary"
-              style={{ marginTop: '0.5rem', fontSize: '0.85rem', padding: '0.4rem 1rem' }}
-              onClick={() => setFlippedCards(new Set(revealedCards.map((_, i) => i)))}
-            >
-              Reveal All
-            </button>
-          )}
-          {coins !== null && (
-            <p style={{ color: 'var(--accent-gold)', fontSize: '0.85rem', marginTop: '0.25rem', display: 'flex', alignItems: 'center', gap: '4px', justifyContent: 'center' }}>
-              <Coins size={14} /> Balance: {coins.toLocaleString()} coins
-            </p>
-          )}
-        </div>
-
-        <div className="pack-reveal">
-          {revealedCards.map((card, i) => (
-            <div
-              key={card.id}
-              className={`card-flip-wrapper${flippedCards.has(i) ? ' is-flipped' : ''}`}
-              style={{ '--flip-delay': `${i * 0.08}s` } as React.CSSProperties}
-              onClick={() => { if (!flippedCards.has(i)) setFlippedCards(prev => new Set([...prev, i])); }}
-            >
-              <div className="card-flip-inner">
-                <div className="card-back">
-                  <img src="/csacardslogo.png" alt="CSA Cards" className="card-back-logo" />
-                  <div className="card-back-label">CSA Cards</div>
-                  <div className="card-back-hint">Click to reveal</div>
-                </div>
-                <div className="card-face"><TradingCard card={card} /></div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ textAlign: 'center', marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button className="btn btn-primary" onClick={() => { setView('shop'); setRevealedCards([]); setFlippedCards(new Set()); }}>
-            <ShoppingBag size={18} /> Buy Another Pack
-          </button>
-          <a href="/collection" className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-            <FolderOpen size={18} /> View Collection
-          </a>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="container">
       <div className="page-header" style={{ textAlign: 'center' }}>
         <h1 className="page-title">Card Shop</h1>
-        <p className="page-subtitle">Spend coins to open premium packs</p>
+        <p className="page-subtitle">Spend coins to add premium packs to your inventory</p>
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1.5rem', marginBottom: '2.5rem', flexWrap: 'wrap' }}>
@@ -257,7 +168,8 @@ export default function ShopPage() {
         {(Object.keys(PACK_CONFIGS) as PackType[]).map(packType => {
           const config = PACK_CONFIGS[packType];
           const badge = PACK_BADGES[packType];
-          const canAfford = coins !== null && coins >= config.cost;
+          const qty = quantities[packType] || 1;
+          const canAfford = coins !== null && coins >= config.cost * qty;
           const isBuying = purchasing === packType;
 
           return (
@@ -285,7 +197,24 @@ export default function ShopPage() {
 
                 <div className="shop-price-row">
                   <Coins size={20} />
-                  <span>{config.cost.toLocaleString()}</span>
+                  <span>{(config.cost * qty).toLocaleString()}</span>
+                  {qty > 1 && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>({config.cost.toLocaleString()} each)</span>}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center', marginBottom: '0.25rem' }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '0.15rem 0.5rem', fontSize: '1rem', lineHeight: 1 }}
+                    onClick={() => setQuantities(q => ({ ...q, [packType]: Math.max(1, (q[packType] || 1) - 1) }))}
+                    disabled={!!purchasing}
+                  >−</button>
+                  <span style={{ fontWeight: 700, minWidth: 20, textAlign: 'center' }}>{qty}</span>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '0.15rem 0.5rem', fontSize: '1rem', lineHeight: 1 }}
+                    onClick={() => setQuantities(q => ({ ...q, [packType]: Math.min(10, (q[packType] || 1) + 1) }))}
+                    disabled={!!purchasing}
+                  >+</button>
                 </div>
 
                 <button
@@ -293,13 +222,19 @@ export default function ShopPage() {
                   onClick={() => handleBuy(packType)}
                   disabled={!!purchasing || !canAfford}
                 >
-                  {isBuying ? 'Opening...' : !canAfford ? `Need ${(config.cost - (coins ?? 0)).toLocaleString()} more coins` : 'Buy & Open'}
+                  {isBuying ? 'Buying...' : !canAfford ? `Need ${((config.cost * qty) - (coins ?? 0)).toLocaleString()} more` : 'Buy & Add to Inventory'}
                 </button>
               </div>
             </div>
           );
         })}
       </div>
+
+      {buyMsg && (
+        <div style={{ textAlign: 'center', marginTop: '1rem', padding: '0.75rem', background: 'rgba(72,199,116,0.1)', border: '1px solid var(--accent-green)', borderRadius: 'var(--radius-md)', color: 'var(--accent-green)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+          {buyMsg} <a href="/collection" style={{ color: 'var(--accent-green)', fontWeight: 600 }}>→ View Inventory</a>
+        </div>
+      )}
 
       <div style={{ textAlign: 'center', marginTop: '1rem', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
         Earn coins by selling cards on the marketplace, completing trades, and collecting your daily login bonus.

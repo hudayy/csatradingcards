@@ -171,12 +171,8 @@ export default function PacksPage() {
           </div>
 
           <div className="pack-remaining">
-            {packsRemaining !== null ? (
-              packsRemaining > 0
-                ? <><strong>{packsRemaining}</strong> free pack{packsRemaining !== 1 ? 's' : ''} remaining today</>
-                : <>Packs reset in <strong>{resetCountdown}</strong> (your local time)</>
-            ) : (
-              'Loading...'
+            {packsRemaining !== null && packsRemaining > 0 && (
+              <><strong>{packsRemaining}</strong> free pack{packsRemaining !== 1 ? 's' : ''} remaining today</>
             )}
           </div>
 

@@ -35,6 +35,10 @@ export default function AdminPage() {
   const [userCards, setUserCards] = useState<CardData[]>([]);
   const [coinAmount, setCoinAmount] = useState('');
   const [allCoinAmount, setAllCoinAmount] = useState('');
+  const [allPackType, setAllPackType] = useState('standard');
+  const [allPackQty, setAllPackQty] = useState('1');
+  const [userPackType, setUserPackType] = useState('standard');
+  const [userPackQty, setUserPackQty] = useState('1');
   const [listings, setListings] = useState<Listing[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -148,6 +152,24 @@ export default function AdminPage() {
     else flash(d.error || 'Failed', false);
   };
 
+  const handleGivePacksAll = async () => {
+    const qty = parseInt(allPackQty);
+    if (!qty || qty < 1) return;
+    if (!confirm(`Give ${qty}x ${allPackType} pack(s) to ALL users?`)) return;
+    const d = await api({ action: 'give_packs_all', pack_type: allPackType, quantity: qty });
+    if (d.success) { flash(`Gave ${qty}x ${allPackType} pack(s) to ${d.count} users`, true); setAllPackQty('1'); }
+    else flash(d.error || 'Failed', false);
+  };
+
+  const handleGivePacksUser = async () => {
+    if (!selectedUser) return;
+    const qty = parseInt(userPackQty);
+    if (!qty || qty < 1) return;
+    const d = await api({ action: 'give_packs_user', user_id: selectedUser.id, pack_type: userPackType, quantity: qty });
+    if (d.success) { flash(`Gave ${qty}x ${userPackType} pack(s) to ${selectedUser.csa_name || selectedUser.discord_username}`, true); setUserPackQty('1'); }
+    else flash(d.error || 'Failed', false);
+  };
+
   const handleAddCoinsUser = async () => {
     if (!selectedUser) return;
     const amt = parseInt(coinAmount);
@@ -232,6 +254,20 @@ export default function AdminPage() {
           ))}
           <input type="number" value={allCoinAmount} onChange={e => setAllCoinAmount(e.target.value)} placeholder="Custom" onKeyDown={e => e.key === 'Enter' && handleAddCoinsAll()} style={{ width: 90, padding: '0.3rem 0.6rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
           <button className="btn btn-primary btn-sm" onClick={handleAddCoinsAll} disabled={!allCoinAmount}>Give All</button>
+        </div>
+      </div>
+
+      {/* Give packs to everyone */}
+      <div style={{ ...cardStyle, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>Give packs to everyone:</span>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <select value={allPackType} onChange={e => setAllPackType(e.target.value)} style={{ padding: '0.3rem 0.6rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+            <option value="standard">Standard</option>
+            <option value="elite">Elite</option>
+            <option value="apex">Apex</option>
+          </select>
+          <input type="number" min={1} max={100} value={allPackQty} onChange={e => setAllPackQty(e.target.value)} placeholder="Qty" style={{ width: 70, padding: '0.3rem 0.6rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
+          <button className="btn btn-primary btn-sm" onClick={handleGivePacksAll} disabled={!allPackQty}>Give All</button>
         </div>
       </div>
 
@@ -442,6 +478,20 @@ export default function AdminPage() {
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <input type="number" value={coinAmount} onChange={e => setCoinAmount(e.target.value)} placeholder="Amount (+/-)" onKeyDown={e => e.key === 'Enter' && handleAddCoinsUser()} style={{ flex: 1, padding: '0.4rem 0.6rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
                   <button className="btn btn-primary btn-sm" onClick={handleAddCoinsUser} disabled={!coinAmount}>Apply</button>
+                </div>
+              </div>
+
+              {/* Give packs */}
+              <div style={{ marginBottom: '1rem' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.4rem', color: 'var(--text-muted)' }}>Give packs</div>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  <select value={userPackType} onChange={e => setUserPackType(e.target.value)} style={{ padding: '0.35rem 0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.82rem' }}>
+                    <option value="standard">Standard</option>
+                    <option value="elite">Elite</option>
+                    <option value="apex">Apex</option>
+                  </select>
+                  <input type="number" min={1} max={100} value={userPackQty} onChange={e => setUserPackQty(e.target.value)} placeholder="Qty" style={{ width: 60, padding: '0.35rem 0.5rem', background: 'var(--bg-secondary)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.82rem' }} />
+                  <button className="btn btn-primary btn-sm" onClick={handleGivePacksUser} disabled={!userPackQty}>Give</button>
                 </div>
               </div>
 

@@ -1132,6 +1132,26 @@ export function adminAddCoinsAll(amount: number): { count: number } {
   return { count: result.changes as number };
 }
 
+export function adminGivePacksAll(packType: string, quantity: number): { count: number } {
+  const db = getDb();
+  const users = db.prepare('SELECT id FROM users').all() as { id: number }[];
+  const insert = db.prepare('INSERT INTO pack_inventory (user_id, pack_type) VALUES (?, ?)');
+  db.transaction(() => {
+    for (const u of users) {
+      for (let i = 0; i < quantity; i++) insert.run(u.id, packType);
+    }
+  })();
+  return { count: users.length };
+}
+
+export function adminGivePacksUser(userId: number, packType: string, quantity: number): void {
+  const db = getDb();
+  const insert = db.prepare('INSERT INTO pack_inventory (user_id, pack_type) VALUES (?, ?)');
+  db.transaction(() => {
+    for (let i = 0; i < quantity; i++) insert.run(userId, packType);
+  })();
+}
+
 export function adminCancelListing(listingId: number): boolean {
   const db = getDb();
   const listing = db.prepare("SELECT * FROM marketplace_listings WHERE id = ? AND status = 'active'").get(listingId) as MarketplaceListing | undefined;

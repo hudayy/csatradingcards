@@ -26,6 +26,7 @@ interface CardData {
   salary: number;
   overall_rating: number;
   season_number: number;
+  copy_count?: number;
 }
 
 interface UserInfo {
@@ -47,12 +48,17 @@ export default function PublicCollectionPage() {
   const [notFound, setNotFound] = useState(false);
   const [selectedRarity, setSelectedRarity] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'rarity' | 'name_asc' | 'name_desc' | 'newest' | 'oldest'>('rarity');
+  const [cardType, setCardType] = useState<'all' | 'player' | 'gm'>('all');
+  const [selectedCard, setSelectedCard] = useState<(CardData & { copy_count?: number }) | null>(null);
 
-  const fetchCards = async (rarity: string, search: string) => {
+  const fetchCards = async (rarity: string, search: string, sort: typeof sortBy, type: typeof cardType) => {
     if (!userId) return;
     const p = new URLSearchParams();
     if (rarity !== 'all') p.set('rarity', rarity);
     if (search) p.set('search', search);
+    if (sort !== 'rarity') p.set('sort', sort);
+    if (type !== 'all') p.set('card_type', type);
     const res = await fetch(`/api/users/${userId}/collection?${p.toString()}`);
     const data = await res.json();
     if (data.cards) {
@@ -65,12 +71,19 @@ export default function PublicCollectionPage() {
   };
 
   useEffect(() => {
-    fetchCards(selectedRarity, searchQuery);
+    fetchCards(selectedRarity, searchQuery, sortBy, cardType);
   }, [userId]);
 
   useEffect(() => {
-    if (!loading) fetchCards(selectedRarity, searchQuery);
-  }, [selectedRarity, searchQuery]);
+    if (!loading) fetchCards(selectedRarity, searchQuery, sortBy, cardType);
+  }, [selectedRarity, searchQuery, sortBy, cardType]);
+
+  const handleCardClick = async (card: CardData) => {
+    setSelectedCard({ ...card, copy_count: undefined });
+    const res = await fetch(`/api/cards/${card.card_id}/value`);
+    const data = await res.json();
+    setSelectedCard(prev => prev?.card_id === card.card_id ? { ...prev, copy_count: data.copy_count ?? 0 } : prev);
+  };
 
   if (loading) return <div className="container"><div className="loading-spinner"><div className="spinner" /></div></div>;
 
@@ -89,6 +102,25 @@ export default function PublicCollectionPage() {
 
   return (
     <div className="container">
+      {selectedCard && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }} onClick={() => setSelectedCard(null)}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-xl)', padding: '1.5rem 2rem', maxWidth: 360, width: '90%' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.5rem' }}>{selectedCard.player_name}</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem', textTransform: 'capitalize' }}>
+              {selectedCard.rarity}{selectedCard.franchise_name ? ` · ${selectedCard.franchise_name}` : ''} · Season {selectedCard.season_number}
+            </div>
+            {selectedCard.copy_count !== undefined ? (
+              <div style={{ fontSize: '0.9rem' }}>
+                <strong>{selectedCard.copy_count}</strong> {selectedCard.copy_count === 1 ? 'copy exists' : 'copies exist'} in total
+              </div>
+            ) : (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading...</div>
+            )}
+            <button className="btn btn-secondary" style={{ marginTop: '1rem', width: '100%' }} onClick={() => setSelectedCard(null)}>Close</button>
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
         <a href={`/u/${userId}`} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-muted)', fontSize: '0.85rem', textDecoration: 'none' }}>
           <ArrowLeft size={15} /> Back to Profile
@@ -115,8 +147,8 @@ export default function PublicCollectionPage() {
         />
       </div>
 
-      {/* Rarity filters */}
-      <div className="filters" style={{ marginBottom: '1.5rem' }}>
+      {/* Filters row */}
+      <div className="filters" style={{ marginBottom: '0.75rem' }}>
         {RARITIES.map(r => (
           <button
             key={r}
@@ -128,6 +160,22 @@ export default function PublicCollectionPage() {
         ))}
       </div>
 
+      {/* Card type + sort row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+        {(['all', 'player', 'gm'] as const).map(t => (
+          <button key={t} className={`filter-btn ${cardType === t ? 'active' : ''}`} onClick={() => setCardType(t)}>
+            {t === 'all' ? 'All Types' : t === 'player' ? 'Players' : 'GMs'}
+          </button>
+        ))}
+        <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)} style={{ padding: '0.4rem 0.6rem', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', fontSize: '0.85rem', marginLeft: 'auto' }}>
+          <option value="rarity">Sort: Rarity</option>
+          <option value="name_asc">Sort: Name A–Z</option>
+          <option value="name_desc">Sort: Name Z–A</option>
+          <option value="newest">Sort: Newest</option>
+          <option value="oldest">Sort: Oldest</option>
+        </select>
+      </div>
+
       {cards.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon"><FolderOpen size={64} /></div>
@@ -137,30 +185,31 @@ export default function PublicCollectionPage() {
       ) : (
         <div className="card-grid">
           {cards.map(card => (
-            <TradingCard
-              key={card.user_card_id}
-              card={{
-                id: card.card_id,
-                card_type: card.card_type,
-                player_name: card.player_name,
-                player_avatar_url: card.player_avatar_url,
-                franchise_name: card.franchise_name,
-                franchise_abbr: card.franchise_abbr,
-                franchise_logo_url: card.franchise_logo_url,
-                franchise_color: card.franchise_color,
-                franchise_conf: card.franchise_conf,
-                tier_name: card.tier_name,
-                tier_abbr: card.tier_abbr,
-                rarity: card.rarity,
-                stat_gpg: card.stat_gpg,
-                stat_apg: card.stat_apg,
-                stat_svpg: card.stat_svpg,
-                stat_win_pct: card.stat_win_pct,
-                salary: card.salary,
-                overall_rating: card.overall_rating,
-                season_number: card.season_number,
-              }}
-            />
+            <div key={card.user_card_id} onClick={() => handleCardClick(card)} style={{ cursor: 'pointer' }}>
+              <TradingCard
+                card={{
+                  id: card.card_id,
+                  card_type: card.card_type,
+                  player_name: card.player_name,
+                  player_avatar_url: card.player_avatar_url,
+                  franchise_name: card.franchise_name,
+                  franchise_abbr: card.franchise_abbr,
+                  franchise_logo_url: card.franchise_logo_url,
+                  franchise_color: card.franchise_color,
+                  franchise_conf: card.franchise_conf,
+                  tier_name: card.tier_name,
+                  tier_abbr: card.tier_abbr,
+                  rarity: card.rarity,
+                  stat_gpg: card.stat_gpg,
+                  stat_apg: card.stat_apg,
+                  stat_svpg: card.stat_svpg,
+                  stat_win_pct: card.stat_win_pct,
+                  salary: card.salary,
+                  overall_rating: card.overall_rating,
+                  season_number: card.season_number,
+                }}
+              />
+            </div>
           ))}
         </div>
       )}

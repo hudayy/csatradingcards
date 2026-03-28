@@ -162,7 +162,7 @@ export default function PublicProfilePage() {
         </h2>
         {showcase.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            {displayName} hasn&apos;t set up their display case yet.
+            {displayName}{' '}hasn&apos;t set up their display case yet.
           </div>
         ) : (
           <div

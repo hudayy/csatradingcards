@@ -12,8 +12,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { searchParams } = new URL(req.url);
   const rarity = searchParams.get('rarity') || undefined;
   const search = searchParams.get('search') || undefined;
+  const sort = (searchParams.get('sort') || 'rarity') as 'rarity' | 'name_asc' | 'name_desc' | 'newest' | 'oldest';
+  const cardType = (searchParams.get('card_type') || undefined) as 'player' | 'gm' | undefined;
 
-  const cards = getUserCards(userId, { rarity, search });
+  const cards = getUserCards(userId, { rarity, search, sort, cardType });
   return NextResponse.json({
     cards,
     user: { id: user.id, discord_username: user.discord_username, csa_name: user.csa_name, avatar_url: user.avatar_url },

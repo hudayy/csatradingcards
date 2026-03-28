@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import TradingCard from '@/components/TradingCard';
-import { FolderOpen, LogIn, Package, Coins, Tag, Flame, ChevronLeft, Layers, ArrowUp, Store, Star, Search, SortAsc, Trophy } from 'lucide-react';
+import { FolderOpen, LogIn, Package, Coins, Tag, Flame, ChevronLeft, Layers, ArrowUp, Store, Star, Search, SortAsc, Trophy, BookOpen } from 'lucide-react';
 
 interface InventoryPack {
   id: number;
@@ -427,6 +427,9 @@ export default function CollectionPage() {
         <button className={`collection-tab${activeTab === 'sets' ? ' active' : ''}`} onClick={() => { setActiveTab('sets'); if (!sets.length) fetchSets(); }}>
           Full Sets {sets.filter(s => s.is_complete && !s.already_claimed).length > 0 && <span className="inv-badge">{sets.filter(s => s.is_complete && !s.already_claimed).length}</span>}
         </button>
+        <a href="/collection/binders" className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', padding: '0.4rem 0.85rem', marginLeft: 'auto' }}>
+          <BookOpen size={15} /> Binders
+        </a>
       </div>
 
       {/* ---- Cards tab ---- */}

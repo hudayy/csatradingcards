@@ -80,7 +80,6 @@ export default function NavBar() {
     { href: '/packs', label: 'Open Packs' },
     { href: '/shop', label: 'Shop' },
     { href: '/collection', label: 'Collection' },
-    { href: '/collection/binders', label: 'Binders' },
     { href: '/marketplace', label: 'Marketplace' },
     { href: '/trades', label: 'Trades' },
     { href: '/challenges', label: 'Challenges' },

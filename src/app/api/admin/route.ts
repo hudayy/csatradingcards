@@ -6,6 +6,7 @@ import {
   adminCancelListing, adminCancelTrade, adminGetAllListings,
   adminGetAllTrades, adminRemoveCard, getUserCards, searchUsers,
   getFeaturedCardsWithData, setFeaturedCard, clearFeaturedSlot, searchCardsForAdmin,
+  adminGivePacksAll, adminGivePacksUser,
 } from '@/lib/db';
 
 async function getAdminUser(requiredSuperAdmin = false) {
@@ -137,6 +138,24 @@ export async function POST(req: NextRequest) {
     const pos = parseInt(position);
     if (isNaN(pos) || pos < 1 || pos > 3) return NextResponse.json({ error: 'Position must be 1–3' }, { status: 400 });
     clearFeaturedSlot(pos);
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === 'give_packs_all') {
+    const { pack_type, quantity } = body;
+    const qty = parseInt(quantity);
+    if (!pack_type || isNaN(qty) || qty < 1 || qty > 100) return NextResponse.json({ error: 'Invalid parameters (pack_type required, quantity 1-100)' }, { status: 400 });
+    const { count } = adminGivePacksAll(pack_type, qty);
+    return NextResponse.json({ success: true, count });
+  }
+
+  if (action === 'give_packs_user') {
+    const { user_id, pack_type, quantity } = body;
+    const qty = parseInt(quantity);
+    if (!user_id || !pack_type || isNaN(qty) || qty < 1 || qty > 100) return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 });
+    const target = getUserById(user_id);
+    if (!target) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    adminGivePacksUser(user_id, pack_type, qty);
     return NextResponse.json({ success: true });
   }
 

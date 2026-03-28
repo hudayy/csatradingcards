@@ -2357,7 +2357,7 @@ export interface FranchiseLoyaltyRotation {
   period_ends_at: string;
 }
 
-const LOYALTY_PERIOD_MS = 3 * 24 * 60 * 60 * 1000;
+const LOYALTY_PERIOD_MS = 24 * 60 * 60 * 1000;
 
 function fisherYates<T>(arr: T[]): T[] {
   const a = [...arr];

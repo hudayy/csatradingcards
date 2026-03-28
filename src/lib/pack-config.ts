@@ -33,7 +33,7 @@ export const PACK_CONFIGS: Record<PackType, {
   franchise_loyalty: {
     name: 'Franchise Loyalty Pack',
     subtitle: 'One Franchise Only',
-    flavour: 'All 5 cards from the featured franchise. Rotation changes every 3 days.',
+    flavour: 'All 5 cards from the featured franchise. A new franchise drops every day.',
     cost: 350,
     allowedRarities: ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'holographic', 'prismatic'],
   },

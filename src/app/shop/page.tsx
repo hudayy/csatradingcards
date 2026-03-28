@@ -46,6 +46,7 @@ export default function ShopPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<PackType | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{ packType: PackType; qty: number; cost: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [buyMsg, setBuyMsg] = useState<string | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -97,13 +98,18 @@ export default function ShopPage() {
     setShopBuying(null);
   };
 
-  const handleBuy = async (packType: PackType) => {
+  const handleBuy = (packType: PackType) => {
     if (purchasing) return;
     const qty = quantities[packType] || 1;
     const cost = PACK_CONFIGS[packType].cost * qty;
     if (coins === null || coins < cost) return;
-    const confirmed = window.confirm(`Buy ${qty} ${PACK_CONFIGS[packType].name}${qty > 1 ? 's' : ''} for ${cost.toLocaleString()} coins?`);
-    if (!confirmed) return;
+    setConfirmModal({ packType, qty, cost });
+  };
+
+  const executeBuy = async () => {
+    if (!confirmModal || purchasing) return;
+    const { packType, qty } = confirmModal;
+    setConfirmModal(null);
     setPurchasing(packType);
     setError(null);
     setBuyMsg(null);
@@ -294,6 +300,24 @@ export default function ShopPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+      {confirmModal && (
+        <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem', backdropFilter: 'blur(4px)' }}>
+          <div className="modal-content" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '2rem', maxWidth: '400px', width: '100%', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3)' }}>
+            <h2 style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.5rem', marginBottom: '1rem' }}>Confirm Purchase</h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', fontSize: '1.05rem' }}>
+              Buy <strong>{confirmModal.qty}</strong> {PACK_CONFIGS[confirmModal.packType].name}{confirmModal.qty > 1 ? 's' : ''} for <strong style={{ color: 'var(--accent-gold)' }}>{confirmModal.cost.toLocaleString()} coins</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmModal(null)} disabled={!!purchasing} style={{ flex: 1 }}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" onClick={executeBuy} disabled={!!purchasing} style={{ flex: 1 }}>
+                Confirm
+              </button>
+            </div>
           </div>
         </div>
       )}

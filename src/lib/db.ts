@@ -2136,14 +2136,15 @@ export function incrementChallengeProgress(userId: number, challengeKey: string,
   const initialProgress = Math.min(amount, challenge.target);
   const initialCompleted = initialProgress >= challenge.target ? 1 : 0;
 
+  const target = challenge.target;
   db.prepare(`
     INSERT INTO user_challenges (user_id, challenge_id, period_key, progress, completed, completed_at)
     VALUES (?, ?, ?, ?, ?, CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END)
     ON CONFLICT(user_id, challenge_id, period_key) DO UPDATE SET
-      progress = MIN(user_challenges.progress + ?, challenges.target),
-      completed = CASE WHEN user_challenges.progress + ? >= challenges.target THEN 1 ELSE user_challenges.completed END,
-      completed_at = CASE WHEN user_challenges.completed = 0 AND user_challenges.progress + ? >= challenges.target THEN CURRENT_TIMESTAMP ELSE user_challenges.completed_at END
-  `).run(userId, challenge.id, periodKey, initialProgress, initialCompleted, initialCompleted, amount, amount, amount);
+      progress = MIN(user_challenges.progress + ?, ?),
+      completed = CASE WHEN user_challenges.progress + ? >= ? THEN 1 ELSE user_challenges.completed END,
+      completed_at = CASE WHEN user_challenges.completed = 0 AND user_challenges.progress + ? >= ? THEN CURRENT_TIMESTAMP ELSE user_challenges.completed_at END
+  `).run(userId, challenge.id, periodKey, initialProgress, initialCompleted, initialCompleted, amount, target, amount, target, amount, target);
 }
 
 export function claimChallengeReward(userId: number, challengeId: number, periodKey: string): { coins: number; pack?: string; newBalance: number } {

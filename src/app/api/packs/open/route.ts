@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, getUserById, getPacksOpenedToday, incrementPacksOpened, createPack, addCardToUser, addCardToPack, isAdmin, updateCoins, recordCoinTransaction, consumeInventoryPack, getInventoryPackType, incrementChallengeProgress, getFranchiseLoyaltyRotation } from '@/lib/db';
+import { getUserByDiscordId, getUserById, getPacksOpenedToday, incrementPacksOpened, createPack, addCardToUser, addCardToPack, isAdmin, updateCoins, deductCoinsIfSufficient, claimFreePackSlot, recordCoinTransaction, consumeInventoryPack, getInventoryPackType, incrementChallengeProgress, getFranchiseLoyaltyRotation } from '@/lib/db';
 import { generatePackCards, PACK_CONFIGS, type PackType } from '@/lib/cards';
 
 const DAILY_FREE_PACKS = parseInt(process.env.DAILY_FREE_PACKS || '3', 10);
@@ -56,24 +56,22 @@ export async function POST(request: NextRequest) {
 
   if (!PACK_CONFIGS[packType]) return NextResponse.json({ error: 'Invalid pack type' }, { status: 400 });
 
+  // Atomically reserve the resource (coins or free pack slot) BEFORE generating cards.
+  // If card generation fails, we refund/undo. This prevents double-spend race conditions.
   if (isPaid) {
     const cost = PACK_CONFIGS[packType].cost;
-    if (user.coins < cost) {
-      return NextResponse.json({ error: `Not enough coins. Need ${cost.toLocaleString()}, you have ${user.coins.toLocaleString()}` }, { status: 400 });
+    if (!deductCoinsIfSufficient(user.id, cost)) {
+      return NextResponse.json({ error: `Not enough coins. Need ${cost.toLocaleString()} coins.` }, { status: 400 });
     }
-  } else {
-    const packsToday = isDevMode ? 0 : getPacksOpenedToday(user.id);
-    if (!isDevMode && packsToday >= DAILY_FREE_PACKS) {
+  } else if (!isDevMode) {
+    if (!claimFreePackSlot(user.id, DAILY_FREE_PACKS)) {
       return NextResponse.json({ error: 'No free packs remaining today', packs_remaining: 0, reset_at: getResetTime() }, { status: 429 });
     }
   }
 
   try {
-    // Generate cards first — if the CSA API fails, no coins are deducted
     const loyaltyFranchiseId = packType === 'franchise_loyalty' ? getFranchiseLoyaltyRotation()?.franchise_id : undefined;
     const cards = await generatePackCards(CARDS_PER_PACK, packType, loyaltyFranchiseId);
-
-    if (isPaid) updateCoins(user.id, -PACK_CONFIGS[packType].cost);
 
     const packId = createPack(user.id, packType);
 
@@ -82,8 +80,6 @@ export async function POST(request: NextRequest) {
       addCardToPack(packId, card.id, userCardId);
       return { ...card, user_card_id: userCardId };
     });
-
-    if (!isPaid && !isDevMode) incrementPacksOpened(user.id);
 
     // Challenge progress
     if (!isDevMode) {
@@ -111,6 +107,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Pack opening error:', error);
+    // Refund the reserved resource since card generation failed
+    if (isPaid) updateCoins(user.id, PACK_CONFIGS[packType].cost);
+    // Note: free pack slot is consumed even on failure to prevent abuse — user can retry next refresh
     return NextResponse.json({ error: 'Failed to generate pack. The CSA API may be temporarily unavailable.' }, { status: 500 });
   }
 }

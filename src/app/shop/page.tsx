@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { Coins, Package, ShoppingBag, Zap, Crown, Gem, LogIn, RefreshCw, Clock, Shield } from 'lucide-react';
+import { Coins, Package, ShoppingBag, Zap, Crown, Gem, LogIn, Clock, Shield } from 'lucide-react';
 import { PACK_CONFIGS, type PackType } from '@/lib/pack-config';
 
 const RARITY_COLORS: Record<string, string> = {
@@ -119,56 +119,23 @@ export default function ShopPage() {
   const [error, setError] = useState<string | null>(null);
   const [buyMsg, setBuyMsg] = useState<string | null>(null);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [shopSlots, setShopSlots] = useState<{ id: number; slot_key: string; item_type: string; pack_type: string | null; coin_amount: number | null; price: number; rotation_ends: string; stock: number | null; sold_count: number }[]>([]);
-  const [shopBuying, setShopBuying] = useState<number | null>(null);
-  const [shopMsg, setShopMsg] = useState<string | null>(null);
   const [loyaltyRotation, setLoyaltyRotation] = useState<LoyaltyRotation | null>(null);
 
   useEffect(() => {
     Promise.all([
       fetch('/api/auth/me').then(r => r.json()),
       fetch('/api/packs/status').then(r => r.json()),
-      fetch('/api/shop').then(r => r.json()),
       fetch('/api/franchise-loyalty').then(r => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([auth, packs, shopData, loyaltyData]) => {
+    ]).then(([auth, packs, loyaltyData]) => {
       if (auth.user) {
         setIsLoggedIn(true);
         setCoins(auth.user.coins);
         if (packs.packs_remaining !== undefined) setPacksRemaining(packs.packs_remaining);
       }
-      if (shopData.slots) setShopSlots(shopData.slots);
       if (loyaltyData?.franchise_id) setLoyaltyRotation(loyaltyData);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
-
-  const handleShopBuy = async (slotId: number, price: number) => {
-    if (shopBuying !== null) return;
-    setShopBuying(slotId);
-    setShopMsg(null);
-    try {
-      const res = await fetch('/api/shop', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slot_id: slotId }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        let msg = `Purchased!`;
-        if (data.item_type === 'pack') msg = `${data.pack_type} pack added to your inventory!`;
-        if (data.item_type === 'coins') msg = `${data.coin_amount?.toLocaleString()} coins added!`;
-        setShopMsg(msg);
-        setCoins(data.newBalance);
-        window.dispatchEvent(new CustomEvent('coinsUpdated', { detail: { balance: data.newBalance } }));
-        setShopSlots(prev => prev.map(s => s.id === slotId ? { ...s, sold_count: s.sold_count + 1 } : s));
-      } else {
-        setShopMsg(data.error || 'Purchase failed');
-      }
-    } catch {
-      setShopMsg('Network error');
-    }
-    setShopBuying(null);
-  };
 
   const handleBuy = (packType: PackType) => {
     if (purchasing) return;
@@ -376,61 +343,6 @@ export default function ShopPage() {
         );
       })()}
 
-      {/* ── Rotating Deals ── */}
-      {shopSlots.length > 0 && (
-        <div style={{ marginTop: '3rem' }}>
-          <h2 style={{ fontFamily: 'Orbitron, sans-serif', fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <RefreshCw size={16} style={{ color: '#818cf8' }} /> Rotating Deals
-          </h2>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>Limited-time offers that refresh daily and weekly.</p>
-          {shopMsg && <div style={{ padding: '0.65rem', background: 'rgba(72,199,116,0.1)', border: '1px solid var(--accent-green)', borderRadius: 'var(--radius-md)', color: 'var(--accent-green)', marginBottom: '1rem', fontSize: '0.85rem' }}>{shopMsg}</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
-            {shopSlots.map(slot => {
-              const isSoldOut = slot.stock !== null && slot.sold_count >= slot.stock;
-              const canAfford = coins !== null && coins >= slot.price;
-              const endsAt = new Date(slot.rotation_ends);
-              const isDaily = slot.slot_key.startsWith('daily');
-              return (
-                <div key={slot.id} style={{
-                  background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-lg)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem',
-                  opacity: isSoldOut ? 0.5 : 1,
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{
-                      fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
-                      padding: '0.15rem 0.5rem', borderRadius: 4,
-                      background: isDaily ? 'rgba(249,115,22,0.2)' : 'rgba(129,140,248,0.2)',
-                      color: isDaily ? '#f97316' : '#818cf8',
-                    }}>{isDaily ? 'Daily' : 'Weekly'}</span>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <Clock size={11} /> {endsAt.toLocaleDateString()}
-                    </span>
-                  </div>
-                  <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                    {slot.item_type === 'pack' ? `${slot.pack_type?.charAt(0).toUpperCase()}${slot.pack_type?.slice(1)} Pack` : `${slot.coin_amount?.toLocaleString()} Coins`}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    {slot.item_type === 'pack' ? '5 cards' : 'Bonus coins'}
-                    {slot.stock !== null && ` · ${slot.stock - slot.sold_count} left`}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 700, color: 'var(--accent-gold)', fontSize: '0.9rem' }}>
-                    <Coins size={14} /> {slot.price.toLocaleString()}
-                  </div>
-                  <button
-                    className="btn btn-primary"
-                    style={{ fontSize: '0.8rem', padding: '0.4rem 0.75rem', marginTop: '0.25rem' }}
-                    disabled={isSoldOut || !canAfford || shopBuying !== null}
-                    onClick={() => handleShopBuy(slot.id, slot.price)}
-                  >
-                    {isSoldOut ? 'Sold Out' : !canAfford ? 'Not Enough Coins' : shopBuying === slot.id ? 'Buying...' : 'Buy'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
       {confirmModal && (
         <div className="modal-overlay" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem', backdropFilter: 'blur(4px)' }}>
           <div className="modal-content" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '2rem', maxWidth: '400px', width: '100%', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3)' }}>

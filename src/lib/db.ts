@@ -796,15 +796,20 @@ export function claimDailyBonus(userId: number): {
   const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
   const user = getUserById(userId);
   if (!user) return { claimed: false, amount: 0, newBalance: 0, streak: 0, streakBonus: null };
-  if (user.last_daily_bonus === today) {
-    return { claimed: false, amount: 0, newBalance: user.coins, streak: user.login_streak ?? 0, streakBonus: null };
-  }
 
   // Update streak: +1 if claimed yesterday, reset to 1 otherwise
   const newStreak = user.last_login_date === yesterday ? (user.login_streak ?? 0) + 1 : 1;
 
-  database.prepare('UPDATE users SET coins = coins + ?, last_daily_bonus = ?, login_streak = ?, last_login_date = ? WHERE id = ?')
-    .run(DAILY_BONUS_AMOUNT, today, newStreak, today, userId);
+  // Atomic update: only succeeds if bonus hasn't been claimed today yet.
+  // Using a WHERE condition on last_daily_bonus prevents a race condition where
+  // two simultaneous requests both read an unclaimed state and both grant coins.
+  const updateResult = database.prepare(
+    'UPDATE users SET coins = coins + ?, last_daily_bonus = ?, login_streak = ?, last_login_date = ? WHERE id = ? AND (last_daily_bonus IS NULL OR last_daily_bonus != ?)'
+  ).run(DAILY_BONUS_AMOUNT, today, newStreak, today, userId, today);
+
+  if (updateResult.changes === 0) {
+    return { claimed: false, amount: 0, newBalance: user.coins, streak: user.login_streak ?? 0, streakBonus: null };
+  }
   const updated = getUserById(userId)!;
   recordCoinTransaction(userId, DAILY_BONUS_AMOUNT, updated.coins, 'daily_bonus', `Daily login bonus (${newStreak}-day streak)`);
 

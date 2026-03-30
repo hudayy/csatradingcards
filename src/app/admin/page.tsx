@@ -42,6 +42,8 @@ export default function AdminPage() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [backups, setBackups] = useState<{ filename: string; created_at: string; size_bytes: number }[]>([]);
+  const [backupLoading, setBackupLoading] = useState(false);
   const emptySlot = (): FeaturedSlot => ({ cardData: null, search: '', results: [], showResults: false, saving: false });
   const [featuredSlots, setFeaturedSlots] = useState<FeaturedSlot[]>([emptySlot(), emptySlot(), emptySlot()]);
   const searchTimers = useRef<(ReturnType<typeof setTimeout> | null)[]>([null, null, null]);
@@ -56,7 +58,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!me) return;
-    if (tab === 'dashboard') { loadStats(); loadFeaturedConfig(); }
+    if (tab === 'dashboard') { loadStats(); loadFeaturedConfig(); loadBackups(); }
     if (tab === 'users') loadUsers('');
     if (tab === 'marketplace') loadListings();
     if (tab === 'trades') loadTrades();
@@ -203,6 +205,28 @@ export default function AdminPage() {
     else flash(d.error || 'Failed', false);
   };
 
+  const loadBackups = async () => {
+    const d = await fetch('/api/admin?action=backups').then(r => r.json());
+    setBackups(d.backups || []);
+  };
+
+  const handleCreateBackup = async () => {
+    setBackupLoading(true);
+    const d = await api({ action: 'create_backup' });
+    setBackupLoading(false);
+    if (d.success) { flash(`Backup created: ${d.backup.filename}`, true); loadBackups(); }
+    else flash(d.error || 'Backup failed', false);
+  };
+
+  const handleRestoreBackup = async (filename: string) => {
+    if (!confirm(`Restore database from "${filename}"?\n\nThis will OVERWRITE the current live database. All changes since this backup was created will be lost. The server process will need to reinitialize the DB connection.\n\nContinue?`)) return;
+    setBackupLoading(true);
+    const d = await api({ action: 'restore_backup', filename });
+    setBackupLoading(false);
+    if (d.success) flash(`Restored from ${filename}. Reload the page to verify.`, true);
+    else flash(d.error || 'Restore failed', false);
+  };
+
   const selectUser = (u: AdminUser) => {
     setSelectedUser(u);
     setCoinAmount('');
@@ -337,6 +361,40 @@ export default function AdminPage() {
               {stats.admins.length === 0 && <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>No other admins</span>}
             </div>
           </div>
+
+          {/* Database Backups */}
+          {me.is_super_admin && (
+            <div style={{ ...cardStyle, marginTop: '1.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <h3 style={{ fontSize: '0.9rem', fontWeight: 700, margin: 0 }}>Database Backups</h3>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button className="btn btn-secondary btn-sm" onClick={loadBackups} disabled={backupLoading}><RefreshCw size={13} /></button>
+                  <button className="btn btn-primary btn-sm" onClick={handleCreateBackup} disabled={backupLoading}>
+                    {backupLoading ? 'Working…' : '+ Create Backup'}
+                  </button>
+                </div>
+              </div>
+              {backups.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>No backups yet.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: 300, overflowY: 'auto' }}>
+                  {backups.map(b => (
+                    <div key={b.filename} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.5rem 0.75rem', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', fontSize: '0.83rem' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.filename}</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                          {new Date(b.created_at).toLocaleString()} · {(b.size_bytes / 1024 / 1024).toFixed(2)} MB
+                        </div>
+                      </div>
+                      <button className="btn btn-danger btn-sm" style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem' }} onClick={() => handleRestoreBackup(b.filename)} disabled={backupLoading}>
+                        Restore
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Featured Cards editor */}
           <div style={{ ...cardStyle, marginTop: '1.5rem' }}>

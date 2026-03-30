@@ -6,7 +6,7 @@ import {
   adminCancelListing, adminCancelTrade, adminGetAllListings,
   adminGetAllTrades, adminRemoveCard, getUserCards, searchUsers,
   getFeaturedCardsWithData, setFeaturedCard, clearFeaturedSlot, searchCardsForAdmin,
-  adminGivePacksAll, adminGivePacksUser,
+  adminGivePacksAll, adminGivePacksUser, listBackups, createBackup, restoreBackup,
 } from '@/lib/db';
 
 async function getAdminUser(requiredSuperAdmin = false) {
@@ -50,6 +50,10 @@ export async function GET(req: NextRequest) {
     const q = req.nextUrl.searchParams.get('q') || '';
     if (!q.trim()) return NextResponse.json({ cards: [] });
     return NextResponse.json({ cards: searchCardsForAdmin(q, 15) });
+  }
+
+  if (action === 'backups') {
+    return NextResponse.json({ backups: listBackups() });
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
@@ -157,6 +161,30 @@ export async function POST(req: NextRequest) {
     if (!target) return NextResponse.json({ error: 'User not found' }, { status: 404 });
     adminGivePacksUser(user_id, pack_type, qty);
     return NextResponse.json({ success: true });
+  }
+
+  if (action === 'create_backup') {
+    const superAdmin = await getAdminUser(true);
+    if (!superAdmin) return NextResponse.json({ error: 'Super admin required' }, { status: 403 });
+    try {
+      const backup = await createBackup();
+      return NextResponse.json({ success: true, backup });
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    }
+  }
+
+  if (action === 'restore_backup') {
+    const superAdmin = await getAdminUser(true);
+    if (!superAdmin) return NextResponse.json({ error: 'Super admin required' }, { status: 403 });
+    const { filename } = body;
+    if (!filename) return NextResponse.json({ error: 'Missing filename' }, { status: 400 });
+    try {
+      restoreBackup(filename);
+      return NextResponse.json({ success: true });
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+    }
   }
 
   if (action === 'backfill_gm_cards') {

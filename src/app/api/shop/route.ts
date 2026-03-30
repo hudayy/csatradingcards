@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getUserByDiscordId, getActiveShopSlots, purchaseShopSlot, seedShopRotation, getUserById, recordCoinTransaction, getDb } from '@/lib/db';
+import { getUserByDiscordId, getUserById, recordCoinTransaction, getDb } from '@/lib/db';
 import { PACK_CONFIGS, type PackType } from '@/lib/pack-config';
 
 export const dynamic = 'force-dynamic';
-
-export async function GET() {
-  seedShopRotation();
-  const slots = getActiveShopSlots();
-  return NextResponse.json({ slots });
-}
 
 export async function POST(req: NextRequest) {
   const session = await getSession();
@@ -43,10 +37,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, quantity, pack_type: packType, newBalance: updated.coins });
     }
 
-    const { slot_id } = body;
-    if (!slot_id) return NextResponse.json({ error: 'Missing slot_id or action' }, { status: 400 });
-    const result = purchaseShopSlot(user.id, slot_id);
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }

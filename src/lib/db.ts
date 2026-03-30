@@ -2320,105 +2320,6 @@ export function claimChallengeReward(userId: number, challengeId: number, period
   return { coins: challenge.reward_coins, pack: challenge.reward_pack_type ?? undefined, newBalance: updated.coins };
 }
 
-// ---- Rotating Shop ----
-
-export interface ShopSlot {
-  id: number;
-  slot_key: string;
-  item_type: string;
-  pack_type: string | null;
-  coin_amount: number | null;
-  price: number;
-  rotation_starts: string;
-  rotation_ends: string;
-  stock: number | null;
-  sold_count: number;
-}
-
-export function getActiveShopSlots(): ShopSlot[] {
-  return getDb().prepare(`
-    SELECT * FROM shop_slots
-    WHERE rotation_starts <= CURRENT_TIMESTAMP AND rotation_ends > CURRENT_TIMESTAMP
-    ORDER BY slot_key
-  `).all() as ShopSlot[];
-}
-
-export function seedShopRotation(): void {
-  const db = getDb();
-
-  // Check if there are any active slots; if not, generate new ones
-  const active = db.prepare(`SELECT COUNT(*) as n FROM shop_slots WHERE rotation_ends > CURRENT_TIMESTAMP`).get() as { n: number };
-  if (active.n > 0) return;
-
-  // Daily rotation: resets every day at UTC midnight
-  // Weekly rotation: resets every Monday at UTC midnight
-  const now = new Date();
-  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const tomorrowStart = new Date(todayStart.getTime() + 86400000);
-
-  // Get next Monday
-  const daysUntilMonday = (8 - now.getUTCDay()) % 7 || 7;
-  const nextMonday = new Date(todayStart.getTime() + daysUntilMonday * 86400000);
-
-  const dailyItems = [
-    { slot_key: 'daily_1', item_type: 'pack', pack_type: 'standard', price: 150 },
-    { slot_key: 'daily_2', item_type: 'pack', pack_type: 'elite', price: 220 },
-    { slot_key: 'daily_3', item_type: 'coins', coin_amount: 500, price: 400 },
-  ];
-  const weeklyItems = [
-    { slot_key: 'weekly_1', item_type: 'pack', pack_type: 'apex', price: 1200 },
-    { slot_key: 'weekly_2', item_type: 'pack', pack_type: 'elite', price: 180, stock: 5 },
-    { slot_key: 'weekly_3', item_type: 'coins', coin_amount: 2000, price: 1500, stock: 3 },
-  ];
-
-  const insertSlot = db.prepare(`INSERT INTO shop_slots (slot_key, item_type, pack_type, coin_amount, price, rotation_starts, rotation_ends, stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-
-  db.transaction(() => {
-    for (const item of dailyItems) {
-      insertSlot.run(item.slot_key, item.item_type, (item as { pack_type?: string }).pack_type ?? null, (item as { coin_amount?: number }).coin_amount ?? null, item.price, todayStart.toISOString(), tomorrowStart.toISOString(), null);
-    }
-    for (const item of weeklyItems) {
-      insertSlot.run(item.slot_key, item.item_type, (item as { pack_type?: string }).pack_type ?? null, (item as { coin_amount?: number }).coin_amount ?? null, item.price, todayStart.toISOString(), nextMonday.toISOString(), (item as { stock?: number }).stock ?? null);
-    }
-  })();
-}
-
-export function purchaseShopSlot(userId: number, slotId: number): { item_type: string; pack_type?: string; coin_amount?: number; newBalance: number } {
-  const db = getDb();
-
-  // All checks and writes inside a single transaction to prevent race conditions
-  db.transaction(() => {
-    const slot2 = db.prepare(`SELECT * FROM shop_slots WHERE id = ? AND rotation_starts <= CURRENT_TIMESTAMP AND rotation_ends > CURRENT_TIMESTAMP`).get(slotId) as ShopSlot | undefined;
-    if (!slot2) throw new Error('Shop item not available');
-    if (slot2.stock !== null && slot2.sold_count >= slot2.stock) throw new Error('This item is sold out');
-
-    const user2 = db.prepare('SELECT coins FROM users WHERE id = ?').get(userId) as { coins: number } | undefined;
-    if (!user2) throw new Error('User not found');
-    if (user2.coins < slot2.price) throw new Error('Not enough coins');
-
-    db.prepare('UPDATE users SET coins = coins - ? WHERE id = ?').run(slot2.price, userId);
-    db.prepare('UPDATE shop_slots SET sold_count = sold_count + 1 WHERE id = ?').run(slotId);
-    db.prepare('INSERT INTO shop_purchases (user_id, slot_id, price) VALUES (?, ?, ?)').run(userId, slotId, slot2.price);
-
-    if (slot2.item_type === 'pack' && slot2.pack_type) {
-      db.prepare('INSERT INTO pack_inventory (user_id, pack_type) VALUES (?, ?)').run(userId, slot2.pack_type);
-    } else if (slot2.item_type === 'coins' && slot2.coin_amount) {
-      db.prepare('UPDATE users SET coins = coins + ? WHERE id = ?').run(slot2.coin_amount, userId);
-    }
-  })();
-
-  // Re-read slot for return values
-  const slot = db.prepare(`SELECT * FROM shop_slots WHERE id = ?`).get(slotId) as ShopSlot;
-
-  const updated = getUserById(userId)!;
-  recordCoinTransaction(userId, -slot.price, updated.coins, 'pack_purchase', `Shop purchase: ${slot.slot_key}`);
-  if (slot.item_type === 'coins' && slot.coin_amount) {
-    recordCoinTransaction(userId, slot.coin_amount, updated.coins + slot.coin_amount, 'reward', `Shop coins: ${slot.slot_key}`);
-  }
-
-  return { item_type: slot.item_type, pack_type: slot.pack_type ?? undefined, coin_amount: slot.coin_amount ?? undefined, newBalance: updated.coins };
-}
-
 // ---- Franchise Loyalty Pack Rotation ----
 
 export interface FranchiseLoyaltyRotation {
@@ -2485,4 +2386,51 @@ export function getFranchiseLoyaltyRotation(): FranchiseLoyaltyRotation | null {
   const periodEnd = new Date(new Date(state.period_started_at).getTime() + LOYALTY_PERIOD_MS).toISOString();
 
   return { ...franchise, period_started_at: state.period_started_at, period_ends_at: periodEnd };
+}
+
+// ---- Database Backups ----
+
+const BACKUP_DIR = path.join(DB_DIR, 'backups');
+
+export interface BackupInfo {
+  filename: string;
+  created_at: string;
+  size_bytes: number;
+}
+
+export function listBackups(): BackupInfo[] {
+  if (!fs.existsSync(BACKUP_DIR)) return [];
+  return fs.readdirSync(BACKUP_DIR)
+    .filter(f => f.endsWith('.db'))
+    .map(f => {
+      const stat = fs.statSync(path.join(BACKUP_DIR, f));
+      return { filename: f, created_at: stat.mtime.toISOString(), size_bytes: stat.size };
+    })
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+export async function createBackup(): Promise<BackupInfo> {
+  if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+  const now = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const filename = `backup_${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}_${pad(now.getUTCHours())}-${pad(now.getUTCMinutes())}-${pad(now.getUTCSeconds())}.db`;
+  const destPath = path.join(BACKUP_DIR, filename);
+  // better-sqlite3 .backup() is safe for live databases — it uses SQLite's online backup API
+  await getDb().backup(destPath);
+  const stat = fs.statSync(destPath);
+  return { filename, created_at: stat.mtime.toISOString(), size_bytes: stat.size };
+}
+
+export function restoreBackup(filename: string): void {
+  // Validate filename to prevent path traversal
+  if (!/^backup_[\d-_]+\.db$/.test(filename)) throw new Error('Invalid backup filename');
+  const srcPath = path.join(BACKUP_DIR, filename);
+  if (!fs.existsSync(srcPath)) throw new Error('Backup file not found');
+
+  // Close the current connection, replace the live DB file, then reset so it reinitializes
+  if (db) {
+    db.close();
+    db = null;
+  }
+  fs.copyFileSync(srcPath, DB_PATH);
 }

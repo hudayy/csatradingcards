@@ -8,11 +8,6 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: 'cdn.discordapp.com' },
     ],
   },
-  // Reduce memory usage during production builds on low-RAM servers
-  experimental: {
-    workerThreads: false,
-    cpus: 1,
-  },
   productionBrowserSourceMaps: false,
 };
 

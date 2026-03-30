@@ -4,8 +4,10 @@ import fs from 'fs';
 
 const DB_DIR = path.join(process.cwd(), 'data');
 const DB_PATH = path.join(DB_DIR, 'tradingcards.db');
+const BACKUP_DIR = path.join(DB_DIR, 'backups');
 
 let db: Database.Database | null = null;
+let backupScheduled = false;
 
 export function getDb(): Database.Database {
   if (db) return db;
@@ -19,7 +21,46 @@ export function getDb(): Database.Database {
   db.pragma('foreign_keys = ON');
 
   initializeSchema(db);
+  scheduleAutoBackups();
   return db;
+}
+
+function scheduleAutoBackups() {
+  if (backupScheduled) return;
+  backupScheduled = true;
+
+  const KEEP_BACKUPS = 14; // keep last 14 daily backups
+  const INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+  const runBackup = async () => {
+    try {
+      if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+      // Skip if a backup already exists for today (UTC date)
+      const todayPrefix = `backup_${new Date().toISOString().slice(0, 10)}`;
+      const existing = fs.existsSync(BACKUP_DIR)
+        ? fs.readdirSync(BACKUP_DIR).filter(f => f.startsWith(todayPrefix))
+        : [];
+      if (existing.length > 0) return;
+
+      await createBackup();
+
+      // Prune old backups beyond KEEP_BACKUPS
+      const all = fs.readdirSync(BACKUP_DIR)
+        .filter(f => f.endsWith('.db'))
+        .sort()
+        .reverse();
+      for (const old of all.slice(KEEP_BACKUPS)) {
+        fs.unlinkSync(path.join(BACKUP_DIR, old));
+      }
+    } catch (e) {
+      console.error('[AutoBackup] Failed:', e);
+    }
+  };
+
+  // Run once at startup, then every 24 hours
+  runBackup();
+  setInterval(runBackup, INTERVAL_MS);
 }
 
 function initializeSchema(db: Database.Database) {
@@ -2389,8 +2430,6 @@ export function getFranchiseLoyaltyRotation(): FranchiseLoyaltyRotation | null {
 }
 
 // ---- Database Backups ----
-
-const BACKUP_DIR = path.join(DB_DIR, 'backups');
 
 export interface BackupInfo {
   filename: string;
